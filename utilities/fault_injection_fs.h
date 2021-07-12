@@ -140,6 +140,17 @@ class TestFSRandomAccessFile : public FSRandomAccessFile {
   IOStatus Read(uint64_t offset, size_t n, const IOOptions& options,
                 Slice* result, char* scratch,
                 IODebugContext* dbg) const override;
+
+  IOStatus Read_aio(size_t , const IOOptions& ,
+                        IODebugContext* , struct aiocb* ) const override{
+    return IOStatus::OK();
+  }
+  IOStatus Read_post_aio(size_t , const IOOptions& ,
+                        Slice* , char* ,
+                        IODebugContext* , struct aiocb* ) const override{
+    return IOStatus::OK();
+  }
+
   size_t GetRequiredBufferAlignment() const override {
     return target_->GetRequiredBufferAlignment();
   }

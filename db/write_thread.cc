@@ -11,6 +11,7 @@
 #include "port/port.h"
 #include "test_util/sync_point.h"
 #include "util/random.h"
+#include <unistd.h>
 
 namespace ROCKSDB_NAMESPACE {
 
@@ -552,6 +553,11 @@ void WriteThread::EnterAsMemTableWriter(Writer* leader,
   }
 
   write_group->last_writer = last_writer;
+  /*if (write_group->last_writer->link_newer == nullptr)
+	  printf("null\n");
+  else
+	  printf("not null\n");
+	  */
   write_group->last_sequence =
       last_writer->sequence + WriteBatchInternal::Count(last_writer->batch) - 1;
 }
@@ -562,10 +568,20 @@ void WriteThread::ExitAsMemTableWriter(Writer* /*self*/,
   Writer* last_writer = write_group.last_writer;
 
   Writer* newest_writer = last_writer;
+  /*if (last_writer->link_newer == nullptr)
+	  printf("null1\n");
+  else
+	  printf("not null1\n");*/
   if (!newest_memtable_writer_.compare_exchange_strong(newest_writer,
                                                        nullptr)) {
     CreateMissingNewerLinks(newest_writer);
     Writer* next_leader = last_writer->link_newer;
+    /*if (next_leader == nullptr)
+	    printf("null2\n");
+    else
+	    printf("not null2\n");*/
+    //if (next_leader->write_group == nullptr)
+    //  printf("groupnull\n");
     assert(next_leader != nullptr);
     next_leader->link_older = nullptr;
     SetState(next_leader, STATE_MEMTABLE_WRITER_LEADER);
@@ -597,7 +613,7 @@ void WriteThread::LaunchParallelMemTableWriters(WriteGroup* write_group) {
   }
 }
 
-static WriteThread::AdaptationContext cpmtw_ctx("CompleteParallelMemTableWriter");
+static WriteThread::AdaptationContext origin_ctx("CompleteParallelMemTableWriter");
 // This method is called by both the leader and parallel followers
 bool WriteThread::CompleteParallelMemTableWriter(Writer* w) {
 
@@ -609,13 +625,41 @@ bool WriteThread::CompleteParallelMemTableWriter(Writer* w) {
 
   if (write_group->running-- > 1) {
     // we're not the last one
-    AwaitState(w, STATE_COMPLETED, &cpmtw_ctx);
+    AwaitState(w, STATE_COMPLETED, &origin_ctx);
     return false;
   }
   // else we're the last parallel worker and should perform exit duties.
   w->status = write_group->status;
   // Callers of this function must ensure w->status is checked.
   write_group->status.PermitUncheckedError();
+  return true;
+}
+
+static WriteThread::AdaptationContext cpmtw_ctx("JW_CompleteParallelMemTableWriter");
+// This method is called by both the leader and parallel followers
+bool WriteThread::JW_CompleteParallelMemTableWriter(Writer* w) {
+  
+  auto* mem_write_group = w->mem_write_group;
+  if (!w->status.ok()) {
+    std::lock_guard<std::mutex> guard(mem_write_group->leader->StateMutex());
+    mem_write_group->status = w->status;
+  }
+  //int a = write_group->running;
+  if (mem_write_group->running-- > 1) {
+    // we're not the last one
+    //printf("waitMW,%d\n",a);
+    //int cur_pid = gettid();
+    //printf("%d,CPMTW1\n",cur_pid);
+    AwaitState(w, STATE_COMPLETED, &cpmtw_ctx);
+    //printf("%d,CPMTW2\n",cur_pid);
+    return false;
+  }
+  //int b = write_group->running;
+  //printf("runT %d %d\n",a,b);
+  // else we're the last parallel worker and should perform exit duties.
+  w->status = mem_write_group->status;
+  // Callers of this function must ensure w->status is checked.
+  mem_write_group->status.PermitUncheckedError();
   return true;
 }
 
@@ -797,5 +841,433 @@ void WriteThread::WaitForMemTableWriters() {
   }
   newest_memtable_writer_.store(nullptr);
 }
+
+bool WriteThread::JW_LinkGroup(WriteGroup& write_group,
+                            std::atomic<Writer*>* newest_writer) {
+  assert(newest_writer != nullptr);
+  Writer* leader = write_group.leader;
+  Writer* last_writer = write_group.last_writer;
+  Writer* w = last_writer;
+  while (true) {
+    // Unset link_newer pointers to make sure when we call
+    // CreateMissingNewerLinks later it create all missing links.
+    //w->link_newer = nullptr;
+    //w->write_group = nullptr;
+    if (w == leader) {
+      break;
+    }
+    w = w->link_older;
+  }
+  Writer* newest = newest_writer->load(std::memory_order_relaxed);
+  while (true) {
+    leader->link_older = newest;
+    if (newest_writer->compare_exchange_weak(newest, last_writer)) {
+      return (newest == nullptr);
+    }
+  }
+}
+
+void WriteThread::JW_EnterAsMemTableWriter(Writer* leader,
+                                        WriteGroup* mem_write_group) {
+  assert(leader != nullptr);
+  //assert(leader->link_older == nullptr);
+  assert(leader->batch != nullptr);
+  assert(mem_write_group != nullptr);
+
+  //size_t size = WriteBatchInternal::ByteSize(leader->batch);
+
+  // Allow the group to grow up to a maximum size, but if the
+  // original write is small, limit the growth so we do not slow
+  // down the small write too much.
+  //size_t max_size = max_write_batch_group_size_bytes;
+  //const uint64_t min_batch_size_bytes = max_write_batch_group_size_bytes / 8;
+  /*if (size <= min_batch_size_bytes) {
+    max_size = size + min_batch_size_bytes;
+  }*/
+  Writer* last_writer = leader;
+  int origin_size = leader->write_group->size - 1;
+  bool merge_next_group = true;
+  if (leader != leader->write_group->leader){
+    last_writer = leader->link_older;
+    merge_next_group = false;
+  }
+  last_writer->mem_write_group = mem_write_group;
+  mem_write_group->leader = leader;
+  mem_write_group->size = 1;
+
+  if (!allow_concurrent_memtable_write_ || !leader->batch->HasMerge()) {
+    Writer* newest_writer = newest_memtable_writer_.load();
+    if (newest_writer != last_writer){
+      JW_CreateMissingNewerLinks(newest_writer, last_writer);
+    }
+    Writer* w = last_writer;
+    if (merge_next_group){
+      while (w != newest_writer) {
+        //printf("ct\n");
+        assert(w->link_newer);
+        w = w->link_newer;
+        if (w->write_group == nullptr){
+          break;
+        }
+        //assert(w->write_group);
+        if (w->write_group->wal_end == false){
+          break;
+        }
+        if (w->batch == nullptr) {
+          break;
+        }
+        
+        if (w->batch->HasMerge()) {
+          break;
+        }
+        
+        w->mem_write_group = mem_write_group;
+        last_writer = w;
+        mem_write_group->size++;
+      }
+    }
+    else{
+      int i = 0;
+      while (w != newest_writer && i < origin_size) {
+        assert(w->link_newer);
+        w = w->link_newer;
+
+        if (w->batch == nullptr) {
+          break;
+        }
+        if (w->batch->HasMerge()) {
+          break;
+        }
+        w->mem_write_group = mem_write_group;
+        last_writer = w;
+        mem_write_group->size++;
+        i++;
+      }
+    }
+  }
+  mem_write_group->last_writer = last_writer;
+    
+  //Writer* newest_writer_after = newest_memtable_writer_.load();
+  //if (last_writer != newest_writer_after)
+  //  printf("diff1\n");
+  mem_write_group->last_sequence =
+      last_writer->sequence + WriteBatchInternal::Count(last_writer->batch) - 1;
+}
+
+static WriteThread::AdaptationContext jweamtw("JW_ExitAsMemTableWriter");
+void WriteThread::JW_ExitAsMemTableWriter(Writer* self_w,
+                                       WriteGroup& write_group) {
+  Writer* leader = write_group.leader;
+  Writer* last_writer = write_group.last_writer;
+
+  Writer* newest_writer = last_writer;
+
+  if (!newest_memtable_writer_.compare_exchange_strong(newest_writer,
+                                                       nullptr)) {
+    JW_CreateMissingNewerLinks(newest_writer, last_writer); 
+    //printf("here2\n");
+    Writer* next_leader = last_writer->link_newer;
+    //printf("here3\n");
+    if (next_leader->write_group != nullptr){
+      bool next_wal_end = next_leader->write_group->wal_end;
+      if (next_leader->write_group->size > 1 && next_wal_end == false){
+        next_leader = next_leader->link_newer;
+      }
+      assert(next_leader != nullptr);
+      if (next_leader->write_group->size > 1 && next_wal_end == false)
+        next_leader->link_older->link_older = nullptr;
+      else
+        next_leader->link_older = nullptr;
+    }
+    else{
+      next_leader->link_older = nullptr;
+    }
+    SetState(next_leader, STATE_MEMTABLE_WRITER_LEADER);
+  }
+
+  if (leader == leader->write_group->leader){
+    Writer* w = leader;
+    while (true) {
+      if (!write_group.status.ok()) {
+        w->status = write_group.status;
+      }
+      Writer* next = w->link_newer;
+      if (w != leader) {
+        SetState(w, STATE_COMPLETED);
+      }
+      if (w == last_writer) {
+        break;
+      }
+      assert(next);
+      w = next;
+    }
+    // Note that leader has to exit last, since it owns the write group.
+    SetState(leader, STATE_COMPLETED);
+  }
+  else{
+    SetState(leader->link_older, STATE_COMPLETED);
+  }
+  AwaitState(self_w, STATE_COMPLETED, &jweamtw);
+}
+
+void WriteThread::JW_LaunchParallelMemTableWriters(WriteGroup* write_group) {
+  assert(write_group != nullptr);
+  Writer* last_writer = write_group->last_writer;
+  Writer* leader = write_group->leader;
+  Writer* newest = newest_memtable_writer_.load(std::memory_order_relaxed);
+  write_group->running.store(write_group->size);
+  while (true) {
+    leader->link_older = newest;
+    if (newest_memtable_writer_.compare_exchange_weak(newest, last_writer)) {
+      if (newest == nullptr){
+        //printf("newisnull\n");
+        break;
+      }
+      else{
+	//printf("notnull\n");
+        return;
+      }
+    }
+  }
+  
+  for (auto w : *write_group) {
+    if (w == leader){
+      continue;
+    }
+    else if (w == leader->link_newer){
+      //printf("FDLD\n");
+      SetState(w, STATE_MEMTABLE_WRITER_LEADER);
+      break;
+    }
+  }
+}
+
+static WriteThread::AdaptationContext jw_ebgl("JW_ExitAsBatchGroupLeader");
+void WriteThread::JW_ExitAsBatchGroupLeader(WriteGroup& write_group,
+                                         Status& status) {
+  Writer* leader = write_group.leader;
+  Writer* last_writer = write_group.last_writer;
+  //assert(leader->link_older == nullptr);
+
+  // If status is non-ok already, then write_group.status won't have the chance
+  // of being propagated to caller.
+  if (!status.ok()) {
+    write_group.status.PermitUncheckedError();
+  }
+
+  // Propagate memtable write error to the whole group.
+  if (status.ok() && !write_group.status.ok()) {
+    status = write_group.status;
+  }
+
+  if (enable_pipelined_write_) {
+    // Notify writers don't write to memtable to exit.
+    for (Writer* w = last_writer; w != leader;) {
+      Writer* next = w->link_older;
+      w->status = status;
+      if (!w->ShouldWriteToMemtable()) {
+        CompleteFollower(w, write_group);
+      }
+      w = next;
+    }
+    if (!leader->ShouldWriteToMemtable()) {
+      CompleteLeader(write_group);
+    }
+
+    Writer* next_leader = nullptr;
+
+    // Look for next leader before we call LinkGroup. If there isn't
+    // pending writers, place a dummy writer at the tail of the queue
+    // so we know the boundary of the current write group.
+    Writer dummy;
+    Writer* expected = last_writer;
+    bool has_dummy = newest_writer_.compare_exchange_strong(expected, &dummy);
+    if (!has_dummy) {
+      // We find at least one pending writer when we insert dummy. We search
+      // for next leader from there.
+      next_leader = FindNextLeader(expected, last_writer);
+      assert(next_leader != nullptr && next_leader != last_writer);
+    }
+
+    // Link the ramaining of the group to memtable writer list.
+    //
+    // We have to link our group to memtable writer queue before wake up the
+    // next leader or set newest_writer_ to null, otherwise the next leader
+    // can run ahead of us and link to memtable writer queue before we do.
+    if (write_group.size == 1) {
+      if (JW_LinkGroup(write_group, &newest_memtable_writer_)) {
+        // The leader can now be different from current writer.
+        SetState(write_group.leader, STATE_MEMTABLE_WRITER_LEADER);
+	//printf("exitdirect\n");
+      }
+      //else{
+	//printf("nodirect\n");
+      //}
+      /*Writer* newest_after = newest_memtable_writer_.load(std::memory_order_relaxed);
+      if (newest_after != last_writer)
+	      printf("not same\n");
+      else
+	      printf("same\n");*/
+    }
+    //else{
+    //  if (write_group.leader->state != STATE_COMPLETED)
+    //    SetState(write_group.leader, STATE_PARALLEL_MEMTABLE_WRITER);
+    //}
+
+    // If we have inserted dummy in the queue, remove it now and check if there
+    // are pending writer join the queue since we insert the dummy. If so,
+    // look for next leader again.
+    if (has_dummy) {
+      assert(next_leader == nullptr);
+      expected = &dummy;
+      bool has_pending_writer =
+          !newest_writer_.compare_exchange_strong(expected, nullptr);
+      if (has_pending_writer) {
+        next_leader = FindNextLeader(expected, &dummy);
+        assert(next_leader != nullptr && next_leader != &dummy);
+      }
+    }
+
+    if (next_leader != nullptr) {
+      next_leader->link_older = nullptr;
+      SetState(next_leader, STATE_GROUP_LEADER);
+    }
+    write_group.wal_end = true;
+    AwaitState(leader, STATE_MEMTABLE_WRITER_LEADER |
+                           STATE_PARALLEL_MEMTABLE_WRITER | STATE_COMPLETED,
+               &jw_ebgl);
+    if (leader->state == STATE_COMPLETED && write_group.size > 1){
+      Writer* com_w = leader;
+      while (true) {
+        if (!write_group.status.ok()) {
+          com_w->status = write_group.status;
+	}
+	Writer* com_next = com_w->link_newer;
+	if (com_w != leader) {
+          SetState(com_w, STATE_COMPLETED);
+	}
+	if (com_w == last_writer) {
+          break;
+	}
+	assert(com_next);
+	com_w = com_next;
+      }
+      /*for (auto w : write_group){
+        SetState(w, STATE_COMPLETED);
+	count++;
+      }*/
+      //SetState(leader->link_newer, STATE_COMPLETED);
+    }
+  } else {
+    Writer* head = newest_writer_.load(std::memory_order_acquire);
+    if (head != last_writer ||
+        !newest_writer_.compare_exchange_strong(head, nullptr)) {
+      // Either w wasn't the head during the load(), or it was the head
+      // during the load() but somebody else pushed onto the list before
+      // we did the compare_exchange_strong (causing it to fail).  In the
+      // latter case compare_exchange_strong has the effect of re-reading
+      // its first param (head).  No need to retry a failing CAS, because
+      // only a departing leader (which we are at the moment) can remove
+      // nodes from the list.
+      assert(head != last_writer);
+
+      // After walking link_older starting from head (if not already done)
+      // we will be able to traverse w->link_newer below. This function
+      // can only be called from an active leader, only a leader can
+      // clear newest_writer_, we didn't, and only a clear newest_writer_
+      // could cause the next leader to start their work without a call
+      // to MarkJoined, so we can definitely conclude that no other leader
+      // work is going on here (with or without db mutex).
+      CreateMissingNewerLinks(head);
+      assert(last_writer->link_newer->link_older == last_writer);
+      last_writer->link_newer->link_older = nullptr;
+
+      // Next leader didn't self-identify, because newest_writer_ wasn't
+      // nullptr when they enqueued (we were definitely enqueued before them
+      // and are still in the list).  That means leader handoff occurs when
+      // we call MarkJoined
+      SetState(last_writer->link_newer, STATE_GROUP_LEADER);
+    }
+    // else nobody else was waiting, although there might already be a new
+    // leader now
+
+    while (last_writer != leader) {
+      assert(last_writer);
+      last_writer->status = status;
+      // we need to read link_older before calling SetState, because as soon
+      // as it is marked committed the other thread's Await may return and
+      // deallocate the Writer.
+      auto next = last_writer->link_older;
+      SetState(last_writer, STATE_COMPLETED);
+
+      last_writer = next;
+    }
+  }
+}
+
+static WriteThread::AdaptationContext jw_ctx("JW_CheckWalFinished");
+void WriteThread::JW_CheckWalFinished(WriteGroup& write_group) {
+  Writer* leader = write_group.leader;
+  while(1) {
+    if (leader->state == STATE_COMPLETED) {
+      break;
+    }
+  }
+  return;
+}
+
+void WriteThread::JW_CreateMissingNewerLinks(Writer* head, Writer* prev_last) {
+  while (true) {
+    Writer* next = head->link_older;
+    //if (next == nullptr || next->link_newer != nullptr) {
+    //  assert(next == nullptr || next->link_newer == head);
+    //  break;
+    //}
+    next->link_newer = head;
+    head = next;
+    if (next == prev_last)
+	    break;
+  }
+}
+
+void WriteThread::JW_LaunchParallel_SkipLeader(WriteGroup* write_group) {
+  assert(write_group != nullptr);
+  write_group->running.store(write_group->size);
+  Writer* leader = write_group->leader;
+  Writer* skip_writer = nullptr;
+  if (leader != leader->write_group->leader){
+    skip_writer = leader->write_group->leader;
+  }
+  for (auto w : *write_group) {
+    if (w == skip_writer)
+      continue;
+    SetState(w, STATE_PARALLEL_MEMTABLE_WRITER);
+  }
+}
+
+void WriteThread::JW_CheckNMW(WriteGroup* write_group) {
+  Writer* last_writer;
+  last_writer = write_group->last_writer;
+  Writer* newest_writer_after = newest_memtable_writer_.load();
+  if (last_writer != newest_writer_after)
+    printf("diff2\n");
+}
+
+void WriteThread::JW_WakeUpAllMember(WriteGroup* write_group) {
+ assert(write_group != nullptr);
+ if (write_group->size > 2){
+   for (auto w : *write_group){
+     if (!(w == write_group->leader || w == write_group->leader->link_newer)){
+       SetState(w, STATE_COMPLETED);
+     }
+   }
+ }
+}
+
+/*void WriteThread::JW_ConfigureGroup(Writer* person, WriteGroup* write_group) {
+  write_group = person->write_group;
+  write_group->leader = person->write_group->leader;
+  write_group->size = person->write_group->size;
+}*/
 
 }  // namespace ROCKSDB_NAMESPACE

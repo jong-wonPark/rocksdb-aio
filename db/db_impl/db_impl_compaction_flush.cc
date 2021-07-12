@@ -3253,6 +3253,7 @@ Status DBImpl::BackgroundCompaction(bool* made_progress,
     m->in_progress = false;  // not being processed anymore
   }
   TEST_SYNC_POINT("DBImpl::BackgroundCompaction:Finish");
+  //printf("ce,%d\n",c->column_family_data()->current()->storage_info()->NumLevelFiles(0));
   return status;
 }
 

@@ -586,6 +586,8 @@ Status CompactionJob::Run() {
   log_buffer_->FlushBufferToLog();
   LogCompaction();
 
+  //printf("cs,%lu,%d,%d\n",start_micros,compact_->compaction->start_level(),compact_->compaction->output_level());
+
   const size_t num_threads = compact_->sub_compact_states.size();
   assert(num_threads > 0);
   const uint64_t start_micros = db_options_.clock->NowMicros();
@@ -761,6 +763,8 @@ Status CompactionJob::Run() {
   LogFlush(db_options_.info_log);
   TEST_SYNC_POINT("CompactionJob::Run():End");
 
+  //printf("ce,%lu,%d,%d\n",env_->NowMicros(),compact_->compaction->start_level(),compact_->compaction->output_level());
+
   compact_->status = status;
   return status;
 }
@@ -885,9 +889,14 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
 
   stream << "lsm_state";
   stream.StartArray();
+  char pmsg[50] = {0x00,};
+  int len_pmsg = 0;
+  len_pmsg = sprintf(pmsg,"ls");
   for (int level = 0; level < vstorage->num_levels(); ++level) {
     stream << vstorage->NumLevelFiles(level);
+    len_pmsg += sprintf(pmsg+len_pmsg,",%d",vstorage->NumLevelFiles(level));
   }
+  printf("%s\n",pmsg);
   stream.EndArray();
 
   if (!blob_files.empty()) {

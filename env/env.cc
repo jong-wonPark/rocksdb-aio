@@ -105,6 +105,16 @@ class LegacyRandomAccessFileWrapper : public FSRandomAccessFile {
     return status_to_io_status(target_->Read(offset, n, result, scratch));
   }
 
+  IOStatus Read_aio(size_t , const IOOptions& ,
+                        IODebugContext* , struct aiocb* ) const override{
+    return IOStatus::OK();
+  }
+  IOStatus Read_post_aio(size_t , const IOOptions& ,
+                        Slice* , char* ,
+                        IODebugContext* , struct aiocb* ) const override{
+    return IOStatus::OK();
+  }
+
   IOStatus MultiRead(FSReadRequest* fs_reqs, size_t num_reqs,
                      const IOOptions& /*options*/,
                      IODebugContext* /*dbg*/) override {

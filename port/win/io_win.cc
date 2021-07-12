@@ -119,7 +119,6 @@ IOStatus pread(const WinFileData* file_data, char* src, size_t num_bytes,
   overlapped.OffsetHigh = offsetUnion.HighPart;
 
   DWORD bytesRead = 0;
-
   if (FALSE == ReadFile(file_data->GetFileHandle(), src,
                         static_cast<DWORD>(num_bytes), &bytesRead,
                         &overlapped)) {

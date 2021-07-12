@@ -82,6 +82,7 @@ class WriteThread {
     Status status;
     std::atomic<size_t> running;
     size_t size = 0;
+    bool wal_end = false;
 
     struct Iterator {
       Writer* writer;
@@ -135,6 +136,13 @@ class WriteThread {
     std::aligned_storage<sizeof(std::condition_variable)>::type state_cv_bytes;
     Writer* link_older;  // read/write only before linking, or as leader
     Writer* link_newer;  // lazy, read/write only before linking, or as leader
+    int state_from;
+    bool wal_end;
+    bool mem_start;
+    bool instead_leader;
+    bool wake_members;
+    //uint32_t cur_tid;
+    WriteGroup* mem_write_group; // this is for JW_ParallelWriteImpl_v2
 
     Writer()
         : batch(nullptr),
@@ -153,7 +161,14 @@ class WriteThread {
           write_group(nullptr),
           sequence(kMaxSequenceNumber),
           link_older(nullptr),
-          link_newer(nullptr) {}
+          link_newer(nullptr),
+          state_from(0),
+          wal_end(false),
+          mem_start(false),
+          instead_leader(false),
+          wake_members(false),
+          //cur_tid(0),
+          mem_write_group(nullptr) {}
 
     Writer(const WriteOptions& write_options, WriteBatch* _batch,
            WriteCallback* _callback, uint64_t _log_ref, bool _disable_memtable,
@@ -175,7 +190,14 @@ class WriteThread {
           write_group(nullptr),
           sequence(kMaxSequenceNumber),
           link_older(nullptr),
-          link_newer(nullptr) {}
+          link_newer(nullptr),
+          state_from(0),
+          wal_end(false),
+          mem_start(false),
+          instead_leader(false),
+          wake_members(false),
+          //cur_tid(0),
+          mem_write_group(nullptr) {}
 
     ~Writer() {
       if (made_waitable) {
@@ -354,6 +376,28 @@ class WriteThread {
   // Remove the dummy writer and wake up waiting writers
   void EndWriteStall();
 
+  void JW_EnterAsMemTableWriter(Writer* leader, WriteGroup* write_group);
+  void JW_ExitAsMemTableWriter(Writer* self, WriteGroup& write_group);
+  void JW_CheckWalFinished(WriteGroup& write_group);
+  void JW_LaunchParallelMemTableWriters(WriteGroup* write_group);
+  void JW_ExitAsBatchGroupLeader(WriteGroup& write_group, Status& status);
+  void JW_LaunchParallel_SkipLeader(WriteGroup* write_group);
+  void JW_CheckNMW(WriteGroup* write_group);
+  bool JW_CompleteParallelMemTableWriter(Writer* w);
+  void JW_WakeUpAllMember(WriteGroup* write_group);
+  //void JW_ConfigureGroup(Writer* person, WriteGroup* write_group);
+ /* 
+  void JW_LaunchParallel_SkipLeader_v2(WriteGroup* write_group);
+  void JW_ExitAsBatchGroupLeader_v2(WriteGroup& write_group, Status& status);
+  void JW_ExitAsMemTableWriter_v2(Writer* self_w, WriteGroup& mem_write_group);
+  void JW_EnterAsMemTableWriter_v2(Writer* leader, WriteGroup* write_group);
+  bool JW_CompleteParallelMemTableWriter_v2(Writer* w);
+
+  void JW_EnterAsMemTableWriter_v3(Writer* leader, WriteGroup* mem_write_group);
+  void JW_ExitAsMemTableWriter_v3(Writer* self_w, WriteGroup& write_group);
+  void JW_ExitAsBatchGroupLeader_v3(WriteGroup& write_group, Status& status);
+  void JW_LaunchParallel_SkipLeader_v3(WriteGroup* write_group);  
+*/
  private:
   // See AwaitState.
   const uint64_t max_yield_usec_;
@@ -431,6 +475,9 @@ class WriteThread {
   // Set a follower in write_group to completed state and remove it from the
   // write group.
   void CompleteFollower(Writer* w, WriteGroup& write_group);
+
+  bool JW_LinkGroup(WriteGroup& write_group, std::atomic<Writer*>* newest_writer);
+  void JW_CreateMissingNewerLinks(Writer* head, Writer* leader);
 };
 
 }  // namespace ROCKSDB_NAMESPACE

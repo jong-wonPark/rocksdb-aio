@@ -41,6 +41,19 @@ class MockTableReader : public TableReader {
              GetContext* get_context, const SliceTransform* prefix_extractor,
              bool skip_filters = false) override;
 
+  Status Get_aio(const ReadOptions& , const Slice& ,
+             GetContext* , const SliceTransform* ,
+             struct aiocb* , bool* , BlockHandle* ,
+             bool ) override {
+    return Status::OK();
+  }
+
+  Status Get_post_aio(const ReadOptions& , const Slice& ,
+             GetContext* , struct aiocb* ,
+             BlockHandle* ) override {
+    return Status::OK();
+  }
+
   uint64_t ApproximateOffsetOf(const Slice& /*key*/,
                                TableReaderCaller /*caller*/) override {
     return 0;

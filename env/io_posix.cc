@@ -575,12 +575,28 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
   ssize_t r = -1;
   size_t left = n;
   char* ptr = scratch;
+  unsigned long lo, hi, lo2, hi2;
+  unsigned long long oper_start, oper_end, nano_sec;
+  int cur_tid = gettid();
+  int count = 0;
+  int reason = 0;
   while (left > 0) {
+    count += 1;
+    asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
     r = pread(fd_, ptr, left, static_cast<off_t>(offset));
+    asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+    oper_start = ((unsigned long long)hi << 32) | lo;
+    oper_end = ((unsigned long long)hi2 << 32) | lo2;
+    nano_sec = (oper_end - oper_start) * 5 / 14;
+    if (false && cur_tid%16 == 0)
+      printf("PRD,%llu\n",nano_sec);
+
     if (r <= 0) {
       if (r == -1 && errno == EINTR) {
+	reason = 1;
         continue;
       }
+      reason = 2;
       break;
     }
     ptr += r;
@@ -593,6 +609,10 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
       break;
     }
   }
+  if (count > 1){
+    printf("%d,%d,%d\n",cur_tid,count,reason);
+  }
+
   if (r < 0) {
     // An error: return a non-ok status
     s = IOError(
@@ -600,6 +620,96 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
         filename_, errno);
   }
   *result = Slice(scratch, (r < 0) ? 0 : n - left);
+  return s;
+}
+
+IOStatus PosixRandomAccessFile::Read_aio(size_t n,
+                                     const IOOptions& /*opts*/, IODebugContext* /*dbg*/,
+                                     struct aiocb* aiocbList_f) const {
+  if (use_direct_io()) {
+    assert(IsSectorAligned(aiocbList_f->aio_offset, GetRequiredBufferAlignment()));
+    assert(IsSectorAligned(n, GetRequiredBufferAlignment()));
+  }
+  IOStatus s;
+  int r = -1;
+  size_t left = n;
+  aiocbList_f->aio_fildes = fd_;
+
+  while (left > 0) {
+    r = aio_read(aiocbList_f);
+
+    if (r <= 0) {
+      if (r == -1 && errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    if (use_direct_io() &&
+        r % static_cast<ssize_t>(GetRequiredBufferAlignment()) != 0) {
+      // Bytes reads don't fill sectors. Should only happen at the end
+      // of the file.
+      break;
+    }
+  }
+
+  if (r < 0) {
+    // An error: return a non-ok status
+    s = IOError(
+        "While aio_read offset " + ToString(aiocbList_f->aio_offset) + " len " + ToString(n),
+        filename_, errno);
+  }
+  return s;
+}
+
+IOStatus PosixRandomAccessFile::Read_post_aio(size_t n,
+                                     const IOOptions& /*opts*/, Slice* result,
+                                     char* scratch, IODebugContext* /*dbg*/,
+                                     struct aiocb* aiocbList_f) const {
+  if (use_direct_io()) {
+    assert(IsSectorAligned(aiocbList_f->aio_offset, GetRequiredBufferAlignment()));
+    assert(IsSectorAligned(n, GetRequiredBufferAlignment()));
+    assert(IsSectorAligned(scratch, GetRequiredBufferAlignment()));
+  }
+  IOStatus s;
+  ssize_t r = -1;
+
+  r = aio_return(aiocbList_f);
+  if (r < 0){
+    size_t left = n;
+    char* ptr = scratch;
+    uint64_t offset = aiocbList_f->aio_offset;
+    int fd1 = aiocbList_f->aio_fildes;
+    while (left > 0) {
+      r = pread(fd1, ptr, left, static_cast<off_t>(offset));
+      if (r <= 0) {
+        if (r == -1 && errno == EINTR) {
+          continue;
+        }
+        break;
+      }
+      ptr += r;
+      offset += r;
+      left -= r;
+      if (use_direct_io() &&
+          r % static_cast<ssize_t>(GetRequiredBufferAlignment()) != 0) {
+        // Bytes reads don't fill sectors. Should only happen at the end
+        // of the file.
+        break;
+      }
+    }
+  }
+  size_t left = n - r;
+
+  scratch = (char*)aiocbList_f->aio_buf;
+
+  if (r < 0) {
+    // An error: return a non-ok status
+    s = IOError(
+        "While aio_return offset " + ToString(aiocbList_f->aio_offset) + " len " + ToString(n),
+        filename_, errno);
+  }
+  *result = Slice(scratch, (r < 0) ? 0 : n - left);
+
   return s;
 }
 

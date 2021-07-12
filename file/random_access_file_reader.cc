@@ -38,6 +38,12 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
                                       size_t n, Slice* result, char* scratch,
                                       AlignedBuf* aligned_buf,
                                       bool for_compaction) const {
+  unsigned long lo, hi, lo_mid1=0, hi_mid1=0, lo_mid2=0, hi_mid2=0, lo_end, hi_end;
+  unsigned long long oper_start, oper_mid1, oper_mid2, oper_end;
+  unsigned long long nano_sec_prev, nano_sec_mid, nano_sec_end;
+  int cur_tid = gettid();
+  asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
+
   (void)aligned_buf;
 
   TEST_SYNC_POINT_CALLBACK("RandomAccessFileReader::Read", nullptr);
@@ -60,7 +66,9 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
       AlignedBuffer buf;
       buf.Alignment(alignment);
       buf.AllocateNewBuffer(read_size);
+      int count = 0;
       while (buf.CurrentSize() < read_size) {
+        count++;
         size_t allowed;
         if (for_compaction && rate_limiter_ != nullptr) {
           allowed = rate_limiter_->RequestToken(
@@ -86,8 +94,10 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
           // one iteration of this loop, so we don't need to check and adjust
           // the opts.timeout before calling file_->Read
           assert(!opts.timeout.count() || allowed == read_size);
+	  asm volatile("rdtsc" : "=a" (lo_mid1), "=d" (hi_mid1));
           io_s = file_->Read(aligned_offset + buf.CurrentSize(), allowed, opts,
                              &tmp, buf.Destination(), nullptr);
+	  asm volatile("rdtsc" : "=a" (lo_mid2), "=d" (hi_mid2));
         }
         if (ShouldNotifyListeners()) {
           auto finish_ts = FileOperationInfo::FinishNow();
@@ -172,6 +182,139 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
       }
       *result = Slice(res_scratch, io_s.ok() ? pos : 0);
     }
+    IOSTATS_ADD_IF_POSITIVE(bytes_read, result->size());
+    SetPerfLevel(prev_perf_level);
+  }
+  if (stats_ != nullptr && file_read_hist_ != nullptr) {
+    file_read_hist_->Add(elapsed);
+  }
+
+  asm volatile("rdtsc" : "=a" (lo_end), "=d" (hi_end));
+  oper_start = ((unsigned long long)hi << 32) | lo;
+  oper_mid1 = ((unsigned long long)hi_mid1 << 32) | lo_mid1;
+  oper_mid2 = ((unsigned long long)hi_mid2 << 32) | lo_mid2;
+  oper_end = ((unsigned long long)hi_end << 32) | lo_end;
+  nano_sec_prev = (oper_mid1 - oper_start) * 5 / 14;
+  nano_sec_mid = (oper_mid2 - oper_mid1) * 5 / 14;
+  nano_sec_end = (oper_end - oper_mid2) * 5 / 14;
+  if (false && cur_tid%16 == 0)
+    printf("RAF,%llu,%llu,%llu\n", nano_sec_prev, nano_sec_mid, nano_sec_end);
+
+  return io_s;
+}
+
+IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset,
+                                      size_t n, struct aiocb* aiocbList_f) const {
+  TEST_SYNC_POINT_CALLBACK("RandomAccessFileReader::Read", nullptr);
+  IOStatus io_s;
+  {
+    IOSTATS_TIMER_GUARD(read_nanos);
+#ifndef ROCKSDB_LITE
+    size_t alignment = file_->GetRequiredBufferAlignment();
+    size_t aligned_offset =
+        TruncateToPageBoundary(alignment, static_cast<size_t>(offset));
+    size_t read_size =
+        Roundup(static_cast<size_t>(offset + n), alignment) - aligned_offset;
+
+    size_t allowed = read_size;
+
+    FileOperationInfo::StartTimePoint start_ts;
+    if (ShouldNotifyListeners()) {
+      start_ts = FileOperationInfo::StartNow();
+    }
+
+    {
+      IOSTATS_CPU_TIMER_GUARD(cpu_read_nanos, clock_);
+      // Only user reads are expected to specify a timeout. And user reads
+      // are not subjected to rate_limiter and should go through only
+      // one iteration of this loop, so we don't need to check and adjust
+      // the opts.timeout before calling file_->Read
+      assert(!opts.timeout.count() || allowed == read_size);
+
+      // aio structure initialize
+      aiocbList_f->aio_buf = malloc(read_size);
+      aiocbList_f->aio_nbytes = read_size;
+      aiocbList_f->aio_reqprio = 0;
+      aiocbList_f->aio_offset = aligned_offset;
+
+      io_s = file_->Read_aio(allowed, opts, nullptr, aiocbList_f);
+    }
+#endif  // !ROCKSDB_LITE
+  }
+  return io_s;
+}
+
+IOStatus RandomAccessFileReader::Read_post_aio(const IOOptions& opts, uint64_t offset,
+                                      size_t n, Slice* result, char* scratch,
+                                      AlignedBuf* aligned_buf,
+                                      struct aiocb* aiocbList_f) const {
+  (void)aligned_buf;
+
+  TEST_SYNC_POINT_CALLBACK("RandomAccessFileReader::Read", nullptr);
+  IOStatus io_s;
+  uint64_t elapsed = 0;
+  {
+    StopWatch sw(clock_, stats_, hist_type_,
+                 (stats_ != nullptr) ? &elapsed : nullptr, true /*overwrite*/,
+                 true /*delay_enabled*/);
+    auto prev_perf_level = GetPerfLevel();
+    IOSTATS_TIMER_GUARD(read_nanos);
+#ifndef ROCKSDB_LITE
+    size_t alignment = file_->GetRequiredBufferAlignment();
+    size_t aligned_offset =
+        TruncateToPageBoundary(alignment, static_cast<size_t>(offset));
+    size_t offset_advance = static_cast<size_t>(offset) - aligned_offset;
+    size_t read_size =
+        Roundup(static_cast<size_t>(offset + n), alignment) - aligned_offset;
+    AlignedBuffer buf;
+    buf.Alignment(alignment);
+    buf.AllocateNewBuffer(read_size);
+
+    size_t allowed;
+    assert(buf.CurrentSize() == 0);
+    allowed = read_size;
+    Slice tmp;
+
+    FileOperationInfo::StartTimePoint start_ts;
+    uint64_t orig_offset = 0;
+    if (ShouldNotifyListeners()) {
+      start_ts = FileOperationInfo::StartNow();
+      orig_offset = aligned_offset + buf.CurrentSize();
+    }
+
+    {
+      IOSTATS_CPU_TIMER_GUARD(cpu_read_nanos, clock_);
+      // Only user reads are expected to specify a timeout. And user reads
+      // are not subjected to rate_limiter and should go through only
+      // one iteration of this loop, so we don't need to check and adjust
+      // the opts.timeout before calling file_->Read
+      assert(!opts.timeout.count() || allowed == read_size);
+      io_s = file_->Read_post_aio(allowed, opts,
+                         &tmp, buf.Destination(), nullptr, aiocbList_f);
+    }
+    if (ShouldNotifyListeners()) {
+      auto finish_ts = FileOperationInfo::FinishNow();
+      NotifyOnFileReadFinish(orig_offset, tmp.size(), start_ts, finish_ts,
+                             io_s);
+    }
+
+    buf.Size(buf.CurrentSize() + tmp.size());
+    if (!io_s.ok() || tmp.size() < allowed) {
+      return io_s;
+    }
+
+    size_t res_len = 0;
+    if (io_s.ok() && offset_advance < buf.CurrentSize()) {
+      res_len = std::min(buf.CurrentSize() - offset_advance, n);
+      if (aligned_buf == nullptr) {
+        buf.Read(scratch, offset_advance, res_len);
+      } else {
+        scratch = buf.BufferStart() + offset_advance;
+        aligned_buf->reset(buf.Release());
+      }
+    }
+    *result = Slice(scratch, res_len);
+#endif  // !ROCKSDB_LITE
     IOSTATS_ADD_IF_POSITIVE(bytes_read, result->size());
     SetPerfLevel(prev_perf_level);
   }

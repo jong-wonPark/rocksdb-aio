@@ -7,7 +7,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 #include <cinttypes>
-
+#include <unistd.h>
 #include "db/db_impl/db_impl.h"
 #include "db/error_handler.h"
 #include "db/event_helpers.h"
@@ -148,6 +148,8 @@ Status DBImpl::WriteImpl(const WriteOptions& write_options,
   }
 
   if (immutable_db_options_.enable_pipelined_write) {
+    //return JW_ParallelWriteImpl(write_options, my_batch, callback, log_used,
+    //                          log_ref, disable_memtable, seq_used);
     return PipelinedWriteImpl(write_options, my_batch, callback, log_used,
                               log_ref, disable_memtable, seq_used);
   }
@@ -470,12 +472,20 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
                      immutable_db_options_.statistics.get(), DB_WRITE);
 
   WriteContext write_context;
-
+  //uint64_t start_time_wait = 0;
+  //start_time_wait = immutable_db_options_.clock->NowMicros();
   WriteThread::Writer w(write_options, my_batch, callback, log_ref,
                         disable_memtable);
   write_thread_.JoinBatchGroup(&w);
   TEST_SYNC_POINT("DBImplWrite::PipelinedWriteImpl:AfterJoinBatchGroup");
+  //uint64_t finish_time_wal = 0;
+  //uint64_t start_time_wal = 0;
+  //bool print_state = false;
+  //uint32_t group_size = 0;
+  //bool group_leader = false;
+  //uint64_t group_size;
   if (w.state == WriteThread::STATE_GROUP_LEADER) {
+    //group_leader = true;
     WriteThread::WriteGroup wal_write_group;
     if (w.callback && !w.callback->AllowWriteBatching()) {
       write_thread_.WaitForMemTableWriters();
@@ -491,8 +501,10 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
     mutex_.Unlock();
 
     // This can set non-OK status if callback fail.
+    //start_time_wal = immutable_db_options_.clock->NowMicros();
     last_batch_group_size_ =
         write_thread_.EnterAsBatchGroupLeader(&w, &wal_write_group);
+    //group_size = wal_write_group.size;
     const SequenceNumber current_sequence =
         write_thread_.UpdateLastSequence(versions_->LastSequence()) + 1;
     size_t total_count = 0;
@@ -539,6 +551,7 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
                           wal_write_group.size - 1);
         RecordTick(stats_, WRITE_DONE_BY_OTHER, wal_write_group.size - 1);
       }
+      //printf("1\n");
       io_s = WriteToWAL(wal_write_group, log_writer, log_used, need_log_sync,
                         need_log_dir_sync, current_sequence);
       w.status = io_s;
@@ -561,8 +574,9 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
       }
       mutex_.Unlock();
     }
-
+    //finish_time_wal = immutable_db_options_.clock->NowMicros();
     write_thread_.ExitAsBatchGroupLeader(wal_write_group, w.status);
+    //group_size = wal_write_group.size;
   }
 
   // NOTE: the memtable_write_group is declared before the following
@@ -609,11 +623,259 @@ Status DBImpl::PipelinedWriteImpl(const WriteOptions& write_options,
       write_thread_.ExitAsMemTableWriter(&w, *w.write_group);
     }
   }
+  /*if (print_state) {
+    printf("WM,%u,%lu,%lu,%lu,%lu\n",group_size,start_time_wait,(start_time_wal-start_time_wait),(finish_time_wal-start_time_wal),(immutable_db_options_.clock->NowMicros()-finish_time_wal));
+  }*/
+  //if (group_leader) {
+//	  printf("%ld,%lu\n",group_size,finish_time_wal-start_time_wal);
+  //}
   if (seq_used != nullptr) {
     *seq_used = w.sequence;
   }
 
   assert(w.state == WriteThread::STATE_COMPLETED);
+  return w.FinalStatus();
+}
+
+Status DBImpl::JW_ParallelWriteImpl(const WriteOptions& write_options,
+                                  WriteBatch* my_batch, WriteCallback* callback,
+                                  uint64_t* log_used, uint64_t log_ref,
+                                  bool disable_memtable, uint64_t* seq_used) {
+  PERF_TIMER_GUARD(write_pre_and_post_process_time);
+  StopWatch write_sw(immutable_db_options_.clock,
+                     immutable_db_options_.statistics.get(), DB_WRITE);
+  uint64_t start_time_wait=0;
+  //uint64_t finish_time_wal=0;
+  //uint64_t start_time_wal=0;
+  //uint64_t mem_time=0;
+  bool group_leader = false;
+  //bool mem_leader = false;
+  //uint32_t group_size = 0;
+
+  start_time_wait = immutable_db_options_.clock->NowMicros();
+  WriteContext write_context;
+
+  WriteThread::Writer w(write_options, my_batch, callback, log_ref,
+                        disable_memtable);
+  //???? newest_writer ? ????. ?? group ? wal ? ??? ?? group leader ?
+  //???? ?? writer ??? ?? ?? ??? writer ? ??? group leader ? ????
+  //int cur_pid = gettid();
+  //printf("%dstart_time:%lu\n", cur_pid,start_time_wait);
+  //printf("%d,start\n",cur_pid);
+  write_thread_.JoinBatchGroup(&w);
+  //printf("%d,join\n",cur_pid);
+  TEST_SYNC_POINT("DBImplWrite::PipelinedWriteImpl:AfterJoinBatchGroup");
+  WriteThread::WriteGroup jw_write_group;
+  if (w.state == WriteThread::STATE_GROUP_LEADER) {
+    group_leader = true;
+    if (w.callback && !w.callback->AllowWriteBatching()) {
+      write_thread_.WaitForMemTableWriters();
+    }
+    mutex_.Lock();
+    bool need_log_sync = !write_options.disableWAL && write_options.sync;
+    bool need_log_dir_sync = need_log_sync && !log_dir_synced_;
+    // PreprocessWrite does its own perf timing.
+    PERF_TIMER_STOP(write_pre_and_post_process_time);
+    //Flush ??? ????. need_log_sync ? true ? ?? log sync ? ??? ??? ??? ? ???
+    //need_log_sync ? default ????? false
+    //printf("%d,Pre1\n",cur_pid);
+    w.status = PreprocessWrite(write_options, &need_log_sync, &write_context);
+    //printf("%d,Pre2\n",cur_pid);
+    PERF_TIMER_START(write_pre_and_post_process_time);
+    log::Writer* log_writer = logs_.back().writer;
+    mutex_.Unlock();
+
+    // This can set non-OK status if callback fail.
+    // group ? ???? writer ? pointer ? ?? ???? group ? last_writer, size ?? ? ??
+    for (uint32_t iter_ = 0; iter_ < 350; ++iter_){
+	    port::AsmVolatilePause();
+    }
+    //start_time_wal = immutable_db_options_.clock->NowMicros();
+    last_batch_group_size_ =
+        write_thread_.EnterAsBatchGroupLeader(&w, &jw_write_group);
+    //group_size = jw_write_group.size;
+    //printf("%d,GLstart,%lu\n",cur_pid,jw_write_group.size);
+    const SequenceNumber current_sequence =
+        write_thread_.UpdateLastSequence(versions_->LastSequence()) + 1;
+    size_t total_count = 0;
+    size_t total_byte_size = 0;
+
+    if (w.status.ok()) {
+      SequenceNumber next_sequence = current_sequence;
+      for (auto writer : jw_write_group) {
+        if (writer->CheckCallback(this)) {
+          if (writer->ShouldWriteToMemtable()) {
+            writer->sequence = next_sequence;
+            size_t count = WriteBatchInternal::Count(writer->batch);
+            next_sequence += count;
+            total_count += count;
+          }
+          total_byte_size = WriteBatchInternal::AppendedByteSize(
+              total_byte_size, WriteBatchInternal::ByteSize(writer->batch));
+        }
+      }
+      if (w.disable_wal) {
+        has_unpersisted_data_.store(true, std::memory_order_relaxed);
+      }
+      write_thread_.UpdateLastSequence(current_sequence + total_count - 1);
+      /*???? memtable leader ? writer ? ????*/
+      if (jw_write_group.size > 1){
+        //printf("%d,WU ML\n",cur_pid);
+        write_thread_.JW_LaunchParallelMemTableWriters(&jw_write_group);
+	//printf("suc\n");
+      }
+    }
+    auto stats = default_cf_internal_stats_;
+    stats->AddDBStats(InternalStats::kIntStatsNumKeysWritten, total_count);
+    RecordTick(stats_, NUMBER_KEYS_WRITTEN, total_count);
+    stats->AddDBStats(InternalStats::kIntStatsBytesWritten, total_byte_size);
+    RecordTick(stats_, BYTES_WRITTEN, total_byte_size);
+    RecordInHistogram(stats_, BYTES_PER_WRITE, total_byte_size);
+
+    PERF_TIMER_STOP(write_pre_and_post_process_time);
+
+    IOStatus io_s;
+    io_s.PermitUncheckedError();  // Allow io_s to be uninitialized
+
+    if (w.status.ok() && !write_options.disableWAL) {
+      PERF_TIMER_GUARD(write_wal_time);
+      stats->AddDBStats(InternalStats::kIntStatsWriteDoneBySelf, 1);
+      RecordTick(stats_, WRITE_DONE_BY_SELF, 1);
+      if (jw_write_group.size > 1) {
+        stats->AddDBStats(InternalStats::kIntStatsWriteDoneByOther,
+                          jw_write_group.size - 1);
+        RecordTick(stats_, WRITE_DONE_BY_OTHER, jw_write_group.size - 1);
+      }
+      //printf("1\n");
+      io_s = WriteToWAL(jw_write_group, log_writer, log_used, need_log_sync,
+                        need_log_dir_sync, current_sequence);
+      w.status = io_s;
+    }
+
+    if (!w.CallbackFailed()) {
+      if (!io_s.ok()) {
+        IOStatusCheck(io_s);
+      } else {
+        WriteStatusCheck(w.status);
+      }
+    }
+
+    if (need_log_sync) {
+      mutex_.Lock();
+      if (w.status.ok()) {
+        w.status = MarkLogsSynced(logfile_number_, need_log_dir_sync);
+      } else {
+        MarkLogsNotSynced(logfile_number_);
+      }
+      mutex_.Unlock();
+    }
+    // next leader ? ??? set_state ???. LinkGroup ??? ?? newest_memtable_writer_ ????
+    // ?? ??? memtable writer leader ? ???.
+    //printf("%d,GLend1,%u\n",cur_pid,group_size);
+    //finish_time_wal = immutable_db_options_.clock->NowMicros();
+    write_thread_.JW_ExitAsBatchGroupLeader(jw_write_group, w.status);
+    //printf("%d,GLexit\n",cur_pid);
+  }
+
+  // NOTE: the memtable_write_group is declared before the following
+  // `if` statement because its lifetime needs to be longer
+  // that the inner context  of the `if` as a reference to it
+  // may be used further below within the outer _write_thread
+  //printf("%d,mi\n",cur_pid);
+  WriteThread::WriteGroup memtable_write_group;
+  if (w.state == WriteThread::STATE_MEMTABLE_WRITER_LEADER) {
+    //write_thread_.JW_ConfigureGroup(&w, &jw_write_group);
+    //mem_leader = true;
+    //start_time_mem = immutable_db_options_.clock->NowMicros();
+    PERF_TIMER_GUARD(write_memtable_time);
+    assert(w.ShouldWriteToMemtable());
+    //printf("%d,MLstart,%lu\n",cur_pid,memtable_write_group.size);
+    write_thread_.JW_EnterAsMemTableWriter(&w, &memtable_write_group);
+    //group_size = jw_write_group.size;
+    //printf("%d,EATW\n",cur_pid);
+    if (memtable_write_group.size > 1 &&
+        immutable_db_options_.allow_concurrent_memtable_write) {
+      ColumnFamilyMemTablesImpl column_family_memtables(
+        versions_->GetColumnFamilySet());
+      write_thread_.JW_LaunchParallel_SkipLeader(&memtable_write_group);
+      if (&w != w.write_group->leader){
+        WriteThread::Writer* my_leader = w.link_older;
+        //mem_time = immutable_db_options_.clock->NowMicros();
+        my_leader->status = WriteBatchInternal::InsertInto(
+            my_leader, my_leader->sequence, &column_family_memtables, &flush_scheduler_,
+            &trim_history_scheduler_, write_options.ignore_missing_column_families,
+            0 /*log_number*/, this, true /*concurrent_memtable_writes*/,
+            false /*seq_per_batch*/, 0 /*batch_cnt*/, true /*batch_per_txn*/,
+            write_options.memtable_insert_hint_per_batch);
+	w.mem_write_group->running--;
+      }
+      //printf("1,%lu\n",immutable_db_options_.clock->NowMicros()-mem_time);
+    } else {
+      //printf("%d,OMstart\n",cur_pid);
+      //write_thread_.JW_CheckNMW(&jw_write_group);
+      //mem_time = immutable_db_options_.clock->NowMicros();
+      memtable_write_group.status = WriteBatchInternal::InsertInto(
+          memtable_write_group, w.sequence, column_family_memtables_.get(),
+          &flush_scheduler_, &trim_history_scheduler_,
+          write_options.ignore_missing_column_families, 0 /*log_number*/, this,
+          false /*concurrent_memtable_writes*/, seq_per_batch_, batch_per_txn_);
+      //printf("2,%lu\n",immutable_db_options_.clock->NowMicros()-mem_time);
+      versions_->SetLastSequence(memtable_write_group.last_sequence);
+      //printf("%d,OMend\n",cur_pid);
+      //write_thread_.JW_CheckNMW(&jw_write_group);
+      write_thread_.JW_ExitAsMemTableWriter(&w, memtable_write_group);
+    }
+    //printf("%d,MLend,%u\n",cur_pid,group_size);
+  } else {
+    // NOTE: the memtable_write_group is never really used,
+    // so we need to set its status to pass ASSERT_STATUS_CHECKED
+    memtable_write_group.status.PermitUncheckedError();
+  }
+
+  //printf("%d,mi2\n",cur_pid);
+
+  if (w.state == WriteThread::STATE_PARALLEL_MEMTABLE_WRITER) {
+    //printf("%d,MWstart\n",cur_pid);
+    /*if (jw_write_group.size == 0){
+      write_thread_.JW_ConfigureGroup(&w, &jw_write_group);
+      group_size = jw_write_group.size;
+    }*/
+    assert(w.ShouldWriteToMemtable());
+    ColumnFamilyMemTablesImpl column_family_memtables(
+        versions_->GetColumnFamilySet());
+    //mem_time = immutable_db_options_.clock->NowMicros();
+    w.status = WriteBatchInternal::InsertInto(
+        &w, w.sequence, &column_family_memtables, &flush_scheduler_,
+        &trim_history_scheduler_, write_options.ignore_missing_column_families,
+        0 /*log_number*/, this, true /*concurrent_memtable_writes*/,
+        false /*seq_per_batch*/, 0 /*batch_cnt*/, true /*batch_per_txn*/,
+        write_options.memtable_insert_hint_per_batch);
+    //printf("3,%lu\n",immutable_db_options_.clock->NowMicros()-mem_time);
+    if (write_thread_.JW_CompleteParallelMemTableWriter(&w)) {
+      MemTableInsertStatusCheck(w.status);
+      versions_->SetLastSequence(w.mem_write_group->last_sequence);
+      //printf("%d,EAMTW1\n",cur_pid);
+      write_thread_.JW_ExitAsMemTableWriter(&w, *w.mem_write_group);
+      //printf("%d,EAMTW2\n",cur_pid);
+    }
+    //printf("%d,MWend\n",cur_pid);
+  }
+
+  if (seq_used != nullptr) {
+    *seq_used = w.sequence;
+  }
+  
+  if (group_leader) {
+    //printf("GL,%u,%lu,%lu,%lu,%lu\n",group_size,start_time_wait,(start_time_wal-start_time_wait),(finish_time_wal-start_time_wal),(immutable_db_options_.clock->NowMicros()-finish_time_wal));
+    printf("GL,%ld,%lu\n",jw_write_group.size,immutable_db_options_.clock->NowMicros()-start_time_wait);
+  }
+  /*
+  if (mem_leader) {
+    printf("%d,ML,%u,%lu,%lu,%lu\n",cur_pid,group_size,start_time_wait,(start_time_mem-start_time_wait),(immutable_db_options_.clock->NowMicros()-start_time_mem));
+  }*/
+  //printf("%d,end\n",cur_pid);
+  assert(w.state == WriteThread::STATE_COMPLETED);
+  //printf("%d,com\n",cur_pid);
   return w.FinalStatus();
 }
 

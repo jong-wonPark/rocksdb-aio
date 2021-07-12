@@ -264,6 +264,16 @@ class MockRandomAccessFile : public FSRandomAccessFile {
     }
   }
 
+  IOStatus Read_aio(size_t , const IOOptions& ,
+                        IODebugContext* , struct aiocb* ) const override{
+    return IOStatus::OK();
+  }
+  IOStatus Read_post_aio(size_t , const IOOptions& ,
+                        Slice* , char* ,
+                        IODebugContext* , struct aiocb* ) const override{
+    return IOStatus::OK();
+  }
+
  private:
   MemFile* file_;
   bool use_direct_io_;

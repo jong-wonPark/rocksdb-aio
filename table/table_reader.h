@@ -110,6 +110,14 @@ class TableReader {
                      const SliceTransform* prefix_extractor,
                      bool skip_filters = false) = 0;
 
+  virtual Status Get_aio(const ReadOptions& readOptions, const Slice& key,
+                     GetContext* get_context, const SliceTransform* prefix_extractor,
+		     struct aiocb* aiocbList_f, bool* cache_miss, BlockHandle* bhandle,
+                     bool skip_filters = false) = 0;
+
+  virtual Status Get_post_aio(const ReadOptions& read_options, const Slice& key,
+             GetContext* get_context, struct aiocb* aiocbList_f, BlockHandle* bhandle) = 0;
+
   virtual void MultiGet(const ReadOptions& readOptions,
                         const MultiGetContext::Range* mget_range,
                         const SliceTransform* prefix_extractor,

@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <aio.h>
 
 #include "db/dbformat.h"
 #include "db/range_del_aggregator.h"
@@ -93,6 +94,22 @@ class TableCache {
              const FileMetaData& file_meta, const Slice& k,
              GetContext* get_context,
              const SliceTransform* prefix_extractor = nullptr,
+             HistogramImpl* file_read_hist = nullptr, bool skip_filters = false,
+             int level = -1, size_t max_file_size_for_l0_meta_pin = 0);
+
+  Status Get_aio(const ReadOptions& options,
+             const InternalKeyComparator& internal_comparator,
+             const FileMetaData& file_meta, const Slice& k,
+             GetContext* get_context, struct aiocb* aiocbList_f, bool* cache_miss,
+             BlockHandle* bhandle, const SliceTransform* prefix_extractor = nullptr,
+             HistogramImpl* file_read_hist = nullptr, bool skip_filters = false,
+             int level = -1, size_t max_file_size_for_l0_meta_pin = 0);
+
+  Status Get_post_aio(const ReadOptions& options,
+             const InternalKeyComparator& internal_comparator,
+             const FileMetaData& file_meta, const Slice& k,
+             GetContext* get_context, struct aiocb* aiocbList_f,
+             BlockHandle* bhandle, const SliceTransform* prefix_extractor = nullptr,
              HistogramImpl* file_read_hist = nullptr, bool skip_filters = false,
              int level = -1, size_t max_file_size_for_l0_meta_pin = 0);
 

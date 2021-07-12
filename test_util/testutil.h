@@ -380,6 +380,16 @@ class StringSource : public FSRandomAccessFile {
     return IOStatus::OK();
   }
 
+  IOStatus Read_aio(size_t , const IOOptions& ,
+                        IODebugContext* , struct aiocb* ) const override{
+    return IOStatus::OK();
+  }
+  IOStatus Read_post_aio(size_t , const IOOptions& ,
+                        Slice* , char* ,
+                        IODebugContext* , struct aiocb* ) const override{
+    return IOStatus::OK();
+  }
+
   size_t GetUniqueId(char* id, size_t max_size) const override {
     if (max_size < 20) {
       return 0;

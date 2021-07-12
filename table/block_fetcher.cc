@@ -216,6 +216,12 @@ inline void BlockFetcher::GetBlockContents() {
 }
 
 IOStatus BlockFetcher::ReadBlockContents() {
+  unsigned long lo=0, hi=0, lo2=0, hi2=0, lo_mid=0, hi_mid=0, lo_mid2=0, hi_mid2=0;
+  unsigned long long oper_start, oper_end, oper_mid, oper_mid2;
+  unsigned long long nano_sec_prev, nano_sec_mid, nano_sec_post;
+  bool prefetch_buffer = false;
+  int cur_tid = gettid();
+  asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
   if (TryGetUncompressBlockFromPersistentCache()) {
     compression_type_ = kNoCompression;
 #ifndef NDEBUG
@@ -224,6 +230,7 @@ IOStatus BlockFetcher::ReadBlockContents() {
     return IOStatus::OK();
   }
   if (TryGetFromPrefetchBuffer()) {
+    prefetch_buffer = true;
     if (!io_status_.ok()) {
       return io_status_;
     }
@@ -234,17 +241,21 @@ IOStatus BlockFetcher::ReadBlockContents() {
     if (io_status_.ok()) {
       if (file_->use_direct_io()) {
         PERF_TIMER_GUARD(block_read_time);
+	asm volatile("rdtsc" : "=a" (lo_mid), "=d" (hi_mid));
         io_status_ =
             file_->Read(opts, handle_.offset(), block_size_with_trailer_,
                         &slice_, nullptr, &direct_io_buf_, for_compaction_);
+	asm volatile("rdtsc" : "=a" (lo_mid2), "=d" (hi_mid2));
         PERF_COUNTER_ADD(block_read_count, 1);
         used_buf_ = const_cast<char*>(slice_.data());
       } else {
         PrepareBufferForBlockFromFile();
         PERF_TIMER_GUARD(block_read_time);
+	asm volatile("rdtsc" : "=a" (lo_mid), "=d" (hi_mid));
         io_status_ =
             file_->Read(opts, handle_.offset(), block_size_with_trailer_,
                         &slice_, used_buf_, nullptr, for_compaction_);
+	asm volatile("rdtsc" : "=a" (lo_mid2), "=d" (hi_mid2));
         PERF_COUNTER_ADD(block_read_count, 1);
 #ifndef NDEBUG
         if (slice_.data() == &stack_buf_[0]) {
@@ -289,13 +300,140 @@ IOStatus BlockFetcher::ReadBlockContents() {
                                   ToString(block_size_with_trailer_) +
                                   " bytes, got " + ToString(slice_.size()));
     }
-
+    
     CheckBlockChecksum();
+    
     if (io_status_.ok()) {
       InsertCompressedBlockToPersistentCacheIfNeeded();
     } else {
       return io_status_;
     }
+  }
+
+  compression_type_ = get_block_compression_type(slice_.data(), block_size_);
+
+  if (do_uncompress_ && compression_type_ != kNoCompression) {
+    PERF_TIMER_GUARD(block_decompress_time);
+    // compressed page, uncompress, update cache
+    UncompressionContext context(compression_type_);
+    UncompressionInfo info(context, uncompression_dict_, compression_type_);
+    io_status_ = status_to_io_status(UncompressBlockContents(
+        info, slice_.data(), block_size_, contents_, footer_.version(),
+        ioptions_, memory_allocator_));
+#ifndef NDEBUG
+    num_heap_buf_memcpy_++;
+#endif
+    compression_type_ = kNoCompression;
+  } else {
+    GetBlockContents();
+  }
+
+  InsertUncompressedBlockToPersistentCacheIfNeeded();
+
+  asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+  oper_start = ((unsigned long long)hi << 32) | lo;
+  oper_mid = ((unsigned long long)hi_mid << 32) | lo_mid;
+  oper_mid2 = ((unsigned long long)hi_mid2 << 32) | lo_mid2;
+  oper_end = ((unsigned long long)hi2 << 32) | lo2;
+  nano_sec_prev = (oper_mid - oper_start) * 5 / 14;
+  nano_sec_mid = (oper_mid2 - oper_mid) * 5 / 14;
+  nano_sec_post = (oper_end - oper_mid2) * 5 / 14;
+  if (false && cur_tid%16 == 0){
+    if (prefetch_buffer){
+      nano_sec_mid = (oper_end - oper_start) * 5 / 14;
+      printf("RBC,%llu\n",nano_sec_mid);
+    }
+    else{
+      printf("RBC,%llu,%llu,%llu\n",nano_sec_prev,nano_sec_mid,nano_sec_post);
+    }
+  }
+  return io_status_;
+}
+
+IOStatus BlockFetcher::ReadBlockContents_aio(struct aiocb* aiocbList_f) {
+  if (TryGetUncompressBlockFromPersistentCache()) {
+    compression_type_ = kNoCompression;
+#ifndef NDEBUG
+    contents_->is_raw_block = true;
+#endif  // NDEBUG
+    return IOStatus::OK();
+  }
+  if (TryGetFromPrefetchBuffer()) {
+    if (!io_status_.ok()) {
+      return io_status_;
+    }
+  } else if (!TryGetCompressedBlockFromPersistentCache()) {
+    IOOptions opts;
+    io_status_ = file_->PrepareIOOptions(read_options_, opts);
+    // Actual file read
+    if (io_status_.ok()) {
+      if (file_->use_direct_io()) {
+        PERF_TIMER_GUARD(block_read_time);
+        io_status_ =
+            file_->Read_aio(opts, handle_.offset(), block_size_with_trailer_,
+                        aiocbList_f);
+      } else {
+        PrepareBufferForBlockFromFile();
+        PERF_TIMER_GUARD(block_read_time);
+        io_status_ =
+            file_->Read(opts, handle_.offset(), block_size_with_trailer_,
+                        &slice_, used_buf_, nullptr, for_compaction_);
+      }
+    }
+  }
+
+  return io_status_;
+}
+
+IOStatus BlockFetcher::ReadBlockContents_post_aio(struct aiocb* aiocbList_f) {
+  IOOptions opts;
+  io_status_ = file_->PrepareIOOptions(read_options_, opts);
+  // Actual file read
+  PERF_TIMER_GUARD(block_read_time);
+  io_status_ =
+      file_->Read_post_aio(opts, handle_.offset(), block_size_with_trailer_,
+                  &slice_, nullptr, &direct_io_buf_, aiocbList_f);
+  PERF_COUNTER_ADD(block_read_count, 1);
+  used_buf_ = const_cast<char*>(slice_.data());
+
+  // TODO: introduce dedicated perf counter for range tombstones
+  switch (block_type_) {
+    case BlockType::kFilter:
+      PERF_COUNTER_ADD(filter_block_read_count, 1);
+      break;
+
+    case BlockType::kCompressionDictionary:
+      PERF_COUNTER_ADD(compression_dict_block_read_count, 1);
+      break;
+
+    case BlockType::kIndex:
+      PERF_COUNTER_ADD(index_block_read_count, 1);
+      break;
+
+    // Nothing to do here as we don't have counters for the other types.
+    default:
+      break;
+  }
+
+  PERF_COUNTER_ADD(block_read_byte, block_size_with_trailer_);
+  if (!io_status_.ok()) {
+    return io_status_;
+  }
+
+  if (slice_.size() != block_size_with_trailer_) {
+    return IOStatus::Corruption("truncated block read from " +
+                                file_->file_name() + " offset " +
+                                ToString(handle_.offset()) + ", expected " +
+                                ToString(block_size_with_trailer_) +
+                                " bytes, got " + ToString(slice_.size()));
+  }
+
+  CheckBlockChecksum();
+
+  if (io_status_.ok()) {
+    InsertCompressedBlockToPersistentCacheIfNeeded();
+  } else {
+    return io_status_;
   }
 
   compression_type_ = get_block_compression_type(slice_.data(), block_size_);

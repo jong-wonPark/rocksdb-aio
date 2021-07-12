@@ -45,6 +45,19 @@ class CuckooTableReader: public TableReader {
              GetContext* get_context, const SliceTransform* prefix_extractor,
              bool skip_filters = false) override;
 
+  Status Get_aio(const ReadOptions& , const Slice& ,
+             GetContext* , const SliceTransform* ,
+             struct aiocb* , bool* , BlockHandle* ,
+             bool ) override {
+    return Status::OK();
+  }
+
+  Status Get_post_aio(const ReadOptions& , const Slice& ,
+             GetContext* , struct aiocb* ,
+             BlockHandle* ) override {
+    return Status::OK();
+  }
+
   // Returns a new iterator over table contents
   // compaction_readahead_size: its value will only be used if for_compaction =
   // true

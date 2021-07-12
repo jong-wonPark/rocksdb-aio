@@ -8,6 +8,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
+
+#include <aio.h>
+
 #include "memory/memory_allocator.h"
 #include "table/block_based/block.h"
 #include "table/block_based/block_type.h"
@@ -65,6 +68,8 @@ class BlockFetcher {
         for_compaction_(for_compaction) {}
 
   IOStatus ReadBlockContents();
+  IOStatus ReadBlockContents_aio(struct aiocb* aiocbList_f);
+  IOStatus ReadBlockContents_post_aio(struct aiocb* aiocbList_f);
   CompressionType get_compression_type() const { return compression_type_; }
 
 #ifndef NDEBUG

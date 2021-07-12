@@ -41,7 +41,8 @@ public class BlockBasedTableConfig extends TableFormatConfig {
     formatVersion = 5;
     enableIndexCompression = true;
     blockAlign = false;
-    indexShortening = IndexShorteningMode.kShortenSeparators;
+    //indexShortening = IndexShorteningMode.kShortenSeparators;
+    indexShortening = IndexShorteningMode.kNoShortening;
 
     // NOTE: ONLY used if blockCache == null
     blockCacheSize = 8 * 1024 * 1024;

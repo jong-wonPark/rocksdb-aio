@@ -1477,11 +1477,19 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache(
                          rep_->compressed_cache_key_prefix_size, handle,
                          compressed_cache_key);
     }
-
+    unsigned long lo, hi, lo2, hi2;
+    unsigned long long oper_start, oper_end;
+    unsigned long long nano_sec_fromcache=0, nano_sec_readcontents=0, nano_sec_tocache=0;
+    int cur_tid = gettid();
     if (!contents) {
+      asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
       s = GetDataBlockFromCache(key, ckey, block_cache, block_cache_compressed,
                                 ro, block_entry, uncompression_dict, block_type,
                                 get_context);
+      asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+      oper_start = ((unsigned long long)hi << 32) | lo;
+      oper_end = ((unsigned long long)hi2 << 32) | lo2;
+      nano_sec_fromcache = (oper_end - oper_start) * 5 / 14;
       if (block_entry->GetValue()) {
         // TODO(haoyu): Differentiate cache hit on uncompressed block cache and
         // compressed block cache.
@@ -1509,7 +1517,12 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache(
             rep_->persistent_cache_options,
             GetMemoryAllocator(rep_->table_options),
             GetMemoryAllocatorForCompressedBlock(rep_->table_options));
+	asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
         s = block_fetcher.ReadBlockContents();
+	asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+      oper_start = ((unsigned long long)hi << 32) | lo;
+      oper_end = ((unsigned long long)hi2 << 32) | lo2;
+      nano_sec_readcontents = (oper_end - oper_start) * 5 / 14;
         raw_block_comp_type = block_fetcher.get_compression_type();
         contents = &raw_block_contents;
         if (get_context) {
@@ -1534,11 +1547,22 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache(
       if (s.ok()) {
         // If filling cache is allowed and a cache is configured, try to put the
         // block to the cache.
+	asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
         s = PutDataBlockToCache(
             key, ckey, block_cache, block_cache_compressed, block_entry,
             contents, raw_block_comp_type, uncompression_dict,
             GetMemoryAllocator(rep_->table_options), block_type, get_context);
+	asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+        oper_start = ((unsigned long long)hi << 32) | lo;
+        oper_end = ((unsigned long long)hi2 << 32) | lo2;
+        nano_sec_tocache = (oper_end - oper_start) * 5 / 14;
       }
+    }
+    if (false && cur_tid%16 == 0){
+      if (block_type == BlockType::kData)
+        printf("MRB-D,%d,%llu,%llu,%llu\n",is_cache_hit,nano_sec_fromcache, nano_sec_readcontents, nano_sec_tocache);
+      else if (block_type == BlockType::kIndex)
+        printf("MRB-I,%d,%llu,%llu,%llu\n",is_cache_hit,nano_sec_fromcache, nano_sec_readcontents, nano_sec_tocache);
     }
   }
 
@@ -1605,7 +1629,22 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache(
           .PermitUncheckedError();
     }
   }
-
+  /*
+  if (block_type == BlockType::kData){
+    printf("b,d,%u,%lu,%d,%lu\n",rep_->level_for_tracing(),rep_->sst_number_for_tracing(),is_cache_hit,rep_->ioptions.env->NowMicros());
+  } else if (block_type == BlockType::kFilter){
+    printf("b,f,%u,%lu,%d,%lu\n",rep_->level_for_tracing(),rep_->sst_number_for_tracing(),is_cache_hit,rep_->ioptions.env->NowMicros());
+  } else if (block_type == BlockType::kCompressionDictionary){
+    printf("b,%lu,%u,%lu,%d,cd\n",rep_->ioptions.env->NowMicros(),rep_->level_for_tracing(),rep_->sst_number_for_tracing(),is_cache_hit);
+  } else if (block_type == BlockType::kRangeDeletion){
+    printf("b,%lu,%u,%lu,%d,rd\n",rep_->ioptions.env->NowMicros(),rep_->level_for_tracing(),rep_->sst_number_for_tracing(),is_cache_hit);
+  } else if (block_type == BlockType::kIndex){
+    printf("b,i,%u,%lu,%d,%lu\n",rep_->level_for_tracing(),rep_->sst_number_for_tracing(),is_cache_hit,rep_->ioptions.env->NowMicros());
+  } else{
+    // This cannot happen.
+    assert(false);
+  }
+  */
   assert(s.ok() || block_entry->GetValue() == nullptr);
   return s;
 }
@@ -2286,6 +2325,17 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
                             bool skip_filters) {
   assert(key.size() >= 8);  // key must be internal key
   assert(get_context != nullptr);
+  
+  unsigned long lo, hi, lo_mid1=0, hi_mid1=0, lo_mid2=0, hi_mid2=0, lo_end, hi_end;
+  unsigned long lo_mid3=0, hi_mid3=0, lo_mid4=0, hi_mid4=0;
+  unsigned long long oper_start, oper_mid1, oper_mid2, oper_end;
+  unsigned long long oper_mid3, oper_mid4;
+  unsigned long long nano_sec_prev, nano_sec_mid, nano_sec_post;
+  unsigned long long nano_sec_mid1, nano_sec_mid2;
+  int for_count1=0, for_count2=0;
+  int cur_tid = gettid();
+  asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
+
   Status s;
   const bool no_io = read_options.read_tier == kBlockCacheTier;
 
@@ -2308,6 +2358,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
   const bool may_match =
       FullFilterKeyMayMatch(read_options, filter, key, no_io, prefix_extractor,
                             get_context, &lookup_context);
+
   TEST_SYNC_POINT("BlockBasedTable::Get:AfterFilterMatch");
   if (!may_match) {
     RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
@@ -2321,6 +2372,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
       need_upper_bound_check = PrefixExtractorChanged(
           rep_->table_properties.get(), prefix_extractor);
     }
+    asm volatile("rdtsc" : "=a" (lo_mid3), "=d" (hi_mid3));
     auto iiter =
         NewIndexIterator(read_options, need_upper_bound_check, &iiter_on_stack,
                          get_context, &lookup_context);
@@ -2333,7 +2385,11 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
         rep_->internal_comparator.user_comparator()->timestamp_size();
     bool matched = false;  // if such user key matched a key in SST
     bool done = false;
+    asm volatile("rdtsc" : "=a" (lo_mid4), "=d" (hi_mid4));
     for (iiter->Seek(key); iiter->Valid() && !done; iiter->Next()) {
+      if (for_count1 == 1)
+        break;
+      for_count1 += 1;
       IndexValue v = iiter->value();
 
       bool not_exist_in_filter =
@@ -2369,10 +2425,13 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
       bool does_referenced_key_exist = false;
       DataBlockIter biter;
       uint64_t referenced_data_size = 0;
+
+      asm volatile("rdtsc" : "=a" (lo_mid1), "=d" (hi_mid1));
       NewDataBlockIterator<DataBlockIter>(
           read_options, v.handle, &biter, BlockType::kData, get_context,
           &lookup_data_block_context,
           /*s=*/Status(), /*prefetch_buffer*/ nullptr);
+      asm volatile("rdtsc" : "=a" (lo_mid2), "=d" (hi_mid2));
 
       if (no_io && biter.status().IsIncomplete()) {
         // couldn't get block from block_cache
@@ -2398,6 +2457,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
       } else {
         // Call the *saver function on each entry/block until it returns false
         for (; biter.Valid(); biter.Next()) {
+          for_count2 += 1;
           ParsedInternalKey parsed_key;
           Status pik_status = ParseInternalKey(
               biter.key(), &parsed_key, false /* log_err_key */);  // TODO
@@ -2463,7 +2523,486 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
       s = iiter->status();
     }
   }
+  asm volatile("rdtsc" : "=a" (lo_end), "=d" (hi_end));
+  oper_start = ((unsigned long long)hi << 32) | lo;
+  oper_mid3 = ((unsigned long long)hi_mid3 << 32) | lo_mid3;
+  oper_mid4 = ((unsigned long long)hi_mid4 << 32) | lo_mid4;
+  oper_mid1 = ((unsigned long long)hi_mid1 << 32) | lo_mid1;
+  oper_mid2 = ((unsigned long long)hi_mid2 << 32) | lo_mid2;
+  oper_end = ((unsigned long long)hi_end << 32) | lo_end;
+  nano_sec_prev = (oper_mid3 - oper_start) * 5 / 14;
+  nano_sec_mid1 = (oper_mid4 - oper_mid3) * 5 / 14;
+  nano_sec_mid2 = (oper_mid1 - oper_mid4) * 5 / 14;
+  nano_sec_mid = (oper_mid2 - oper_mid1) * 5 / 14;
+  nano_sec_post = (oper_end - oper_mid2) * 5 / 14;
+  if (false && cur_tid%16 == 0)
+    printf("BBTG,%d,%d,%llu,%llu,%llu,%llu,%llu\n",for_count1,for_count2,nano_sec_prev,nano_sec_mid1,nano_sec_mid2,nano_sec_mid,nano_sec_post);
+  return s;
+}
 
+Status BlockBasedTable::Get_aio(const ReadOptions& read_options, const Slice& key,
+                            GetContext* get_context, const SliceTransform* prefix_extractor,
+                            struct aiocb* aiocbList_f, bool* cache_miss, BlockHandle* bhandle,
+			    bool skip_filters) {
+  assert(key.size() >= 8);  // key must be internal key
+  assert(get_context != nullptr);
+
+  Status s;
+  const bool no_io = read_options.read_tier == kBlockCacheTier;
+
+  FilterBlockReader* const filter =
+      !skip_filters ? rep_->filter.get() : nullptr;
+
+  // First check the full filter
+  // If full filter not useful, Then go into each block
+  uint64_t tracing_get_id = get_context->get_tracing_get_id();
+  BlockCacheLookupContext lookup_context{
+      TableReaderCaller::kUserGet, tracing_get_id,
+      /*get_from_user_specified_snapshot=*/read_options.snapshot != nullptr};
+  if (block_cache_tracer_ && block_cache_tracer_->is_tracing_enabled()) {
+    // Trace the key since it contains both user key and sequence number.
+    lookup_context.referenced_key = key.ToString();
+    lookup_context.get_from_user_specified_snapshot =
+        read_options.snapshot != nullptr;
+  }
+  TEST_SYNC_POINT("BlockBasedTable::Get:BeforeFilterMatch");
+  const bool may_match =
+      FullFilterKeyMayMatch(read_options, filter, key, no_io, prefix_extractor,
+                            get_context, &lookup_context);
+
+  TEST_SYNC_POINT("BlockBasedTable::Get:AfterFilterMatch");
+  if (!may_match) {
+    RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
+    PERF_COUNTER_BY_LEVEL_ADD(bloom_filter_useful, 1, rep_->level);
+  } else {
+    IndexBlockIter iiter_on_stack;
+    // if prefix_extractor found in block differs from options, disable
+    // BlockPrefixIndex. Only do this check when index_type is kHashSearch.
+    bool need_upper_bound_check = false;
+    if (rep_->index_type == BlockBasedTableOptions::kHashSearch) {
+      need_upper_bound_check = PrefixExtractorChanged(
+          rep_->table_properties.get(), prefix_extractor);
+    }
+    auto iiter =
+        NewIndexIterator(read_options, need_upper_bound_check, &iiter_on_stack,
+                         get_context, &lookup_context);
+    std::unique_ptr<InternalIteratorBase<IndexValue>> iiter_unique_ptr;
+    if (iiter != &iiter_on_stack) {
+      iiter_unique_ptr.reset(iiter);
+    }
+
+    size_t ts_sz =
+        rep_->internal_comparator.user_comparator()->timestamp_size();
+    bool matched = false;  // if such user key matched a key in SST
+    bool done = false;
+    bool search_once = true;
+    for (iiter->Seek(key); iiter->Valid() && !done; iiter->Next()) {
+      IndexValue v = iiter->value();
+
+      bool not_exist_in_filter =
+          filter != nullptr && filter->IsBlockBased() == true &&
+          !filter->KeyMayMatch(ExtractUserKeyAndStripTimestamp(key, ts_sz),
+                               prefix_extractor, v.handle.offset(), no_io,
+                               /*const_ikey_ptr=*/nullptr, get_context,
+                               &lookup_context);
+
+      if (not_exist_in_filter) {
+        // Not found
+        // TODO: think about interaction with Merge. If a user key cannot
+        // cross one data block, we should be fine.
+        RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
+        PERF_COUNTER_BY_LEVEL_ADD(bloom_filter_useful, 1, rep_->level);
+        break;
+      }
+
+      if (!v.first_internal_key.empty() && !skip_filters &&
+          UserComparatorWrapper(rep_->internal_comparator.user_comparator())
+                  .CompareWithoutTimestamp(
+                      ExtractUserKey(key),
+                      ExtractUserKey(v.first_internal_key)) < 0) {
+        // The requested key falls between highest key in previous block and
+        // lowest key in current block.
+        break;
+      }
+
+      BlockCacheLookupContext lookup_data_block_context{
+          TableReaderCaller::kUserGet, tracing_get_id,
+          /*get_from_user_specified_snapshot=*/read_options.snapshot !=
+              nullptr};
+      DataBlockIter biter;
+      NewDataBlockIterator_aio<DataBlockIter>(
+          read_options, v.handle, &biter, BlockType::kData, get_context,
+          &lookup_data_block_context,
+          /*s=*/Status(), /*prefetch_buffer*/ nullptr,
+          aiocbList_f, cache_miss);
+      if (*cache_miss){
+        bhandle->set_offset(v.handle.offset());
+        bhandle->set_size(v.handle.size());
+        break;
+      }
+      if (no_io && biter.status().IsIncomplete()) {
+        // couldn't get block from block_cache
+        // Update Saver.state to Found because we are only looking for
+        // whether we can guarantee the key is not there when "no_io" is set
+        get_context->MarkKeyMayExist();
+        break;
+      }
+      if (!biter.status().ok()) {
+        s = biter.status();
+        break;
+      }
+
+      bool may_exist = biter.SeekForGet(key);
+      // If user-specified timestamp is supported, we cannot end the search
+      // just because hash index lookup indicates the key+ts does not exist.
+      if (!may_exist && ts_sz == 0) {
+        // HashSeek cannot find the key this block and the the iter is not
+        // the end of the block, i.e. cannot be in the following blocks
+        // either. In this case, the seek_key cannot be found, so we break
+        // from the top level for-loop.
+        done = true;
+      } else {
+        // Call the *saver function on each entry/block until it returns false
+        for (; biter.Valid(); biter.Next()) {
+          ParsedInternalKey parsed_key;
+          Status pik_status = ParseInternalKey(
+              biter.key(), &parsed_key, false /* log_err_key */);  // TODO
+          if (!pik_status.ok()) {
+            s = pik_status;
+          }
+
+          if (!get_context->SaveValue(
+                  parsed_key, biter.value(), &matched,
+                  biter.IsValuePinned() ? &biter : nullptr)) {
+            done = true;
+            break;
+          }
+        }
+        s = biter.status();
+      }
+
+      if (done || search_once) {
+        // Avoid the extra Next which is expensive in two-level indexes
+        break;
+      }
+    }
+    if (matched && filter != nullptr && !filter->IsBlockBased() && *cache_miss == false) {
+      RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_FULL_TRUE_POSITIVE);
+      PERF_COUNTER_BY_LEVEL_ADD(bloom_filter_full_true_positive, 1,
+                                rep_->level);
+    }
+    if (s.ok() && *cache_miss == false && !iiter->status().IsNotFound()) {
+      s = iiter->status();
+    }
+  }
+  return s;
+}
+
+Status BlockBasedTable::Get_post_aio(const ReadOptions& read_options, const Slice& key,
+                            GetContext* get_context, struct aiocb* aiocbList_f,
+			    BlockHandle* bhandle) {
+  assert(key.size() >= 8);  // key must be internal key
+  assert(get_context != nullptr);
+
+  Status s;
+
+  // First check the full filter
+  // If full filter not useful, Then go into each block
+  uint64_t tracing_get_id = get_context->get_tracing_get_id();
+
+  size_t ts_sz =
+      rep_->internal_comparator.user_comparator()->timestamp_size();
+  bool matched = false;  // if such user key matched a key in SST
+
+  BlockCacheLookupContext lookup_data_block_context{
+      TableReaderCaller::kUserGet, tracing_get_id,
+      /*get_from_user_specified_snapshot=*/read_options.snapshot !=
+          nullptr};
+  DataBlockIter biter;
+
+  NewDataBlockIterator_post_aio<DataBlockIter>(
+      read_options, *bhandle/*v.handle*/, &biter, BlockType::kData, get_context,
+      &lookup_data_block_context,
+      /*s=*/Status(), /*prefetch_buffer*/ nullptr, aiocbList_f);
+
+  if (!biter.status().ok()) {
+    s = biter.status();
+    return s;
+  }
+
+  bool may_exist = biter.SeekForGet(key);
+  // If user-specified timestamp is supported, we cannot end the search
+  // just because hash index lookup indicates the key+ts does not exist.
+  if ( may_exist || ts_sz != 0) {
+    // Call the *saver function on each entry/block until it returns false
+    for (; biter.Valid(); biter.Next()) {
+      ParsedInternalKey parsed_key;
+      Status pik_status = ParseInternalKey(
+          biter.key(), &parsed_key, false /* log_err_key */);  // TODO
+      if (!pik_status.ok()) {
+        s = pik_status;
+      }
+
+      if (!get_context->SaveValue(
+              parsed_key, biter.value(), &matched,
+              biter.IsValuePinned() ? &biter : nullptr)) {
+        break;
+      }
+    }
+    s = biter.status();
+  }
+
+  return s;
+}
+
+template <typename TBlocklike>
+Status BlockBasedTable::RetrieveBlock_aio(
+    FilePrefetchBuffer* prefetch_buffer, const ReadOptions& ro,
+    const BlockHandle& handle, const UncompressionDict& uncompression_dict,
+    CachableEntry<TBlocklike>* block_entry, BlockType block_type,
+    GetContext* get_context, bool use_cache, struct aiocb* aiocbList_f,
+    bool* cache_miss) const {
+  assert(block_entry);
+  assert(block_entry->IsEmpty());
+
+  Status s;
+  if (use_cache) {
+    s = MaybeReadBlockAndLoadToCache_aio(prefetch_buffer, ro, handle,
+                                     uncompression_dict, block_entry,
+                                     block_type, get_context, /*contents=*/nullptr,
+				     aiocbList_f, cache_miss);
+
+    if (!s.ok()) {
+      return s;
+    }
+
+    if (block_entry->GetValue() != nullptr || cache_miss) {
+      assert(s.ok());
+      return s;
+    }
+  }
+  return s;
+}
+
+template <typename TBlocklike>
+Status BlockBasedTable::RetrieveBlock_post_aio(
+    FilePrefetchBuffer* prefetch_buffer, const ReadOptions& ro,
+    const BlockHandle& handle, const UncompressionDict& uncompression_dict,
+    CachableEntry<TBlocklike>* block_entry, BlockType block_type,
+    GetContext* get_context, bool use_cache,
+    struct aiocb* aiocbList_f) const {
+  assert(block_entry);
+  assert(block_entry->IsEmpty());
+
+  Status s;
+  if (use_cache) {
+    s = MaybeReadBlockAndLoadToCache_post_aio(prefetch_buffer, ro, handle,
+                                     uncompression_dict, block_entry,
+                                     block_type, get_context,
+                                     /*contents=*/nullptr, aiocbList_f);
+
+    if (!s.ok()) {
+      return s;
+    }
+
+    if (block_entry->GetValue() != nullptr) {
+      assert(s.ok());
+      return s;
+    }
+  }
+  return s;
+}
+
+template <typename TBlocklike>
+Status BlockBasedTable::MaybeReadBlockAndLoadToCache_aio(
+    FilePrefetchBuffer* prefetch_buffer, const ReadOptions& ro,
+    const BlockHandle& handle, const UncompressionDict& uncompression_dict,
+    CachableEntry<TBlocklike>* block_entry, BlockType block_type,
+    GetContext* get_context, BlockContents* contents,
+    struct aiocb* aiocbList_f, bool* cache_miss) const {
+  assert(block_entry != nullptr);
+  const bool no_io = (ro.read_tier == kBlockCacheTier);
+  Cache* block_cache = rep_->table_options.block_cache.get();
+  Cache* block_cache_compressed =
+      rep_->table_options.block_cache_compressed.get();
+
+  // First, try to get the block from the cache
+  //
+  // If either block cache is enabled, we'll try to read from it.
+  Status s;
+  char cache_key[kMaxCacheKeyPrefixSize + kMaxVarint64Length];
+  char compressed_cache_key[kMaxCacheKeyPrefixSize + kMaxVarint64Length];
+  Slice key /* key to the block cache */;
+  Slice ckey /* key to the compressed block cache */;
+  bool is_cache_hit = false;
+  if (block_cache != nullptr || block_cache_compressed != nullptr) {
+    // create key for block cache
+    if (block_cache != nullptr) {
+      key = GetCacheKey(rep_->cache_key_prefix, rep_->cache_key_prefix_size,
+                        handle, cache_key);
+    }
+
+    if (block_cache_compressed != nullptr) {
+      ckey = GetCacheKey(rep_->compressed_cache_key_prefix,
+                         rep_->compressed_cache_key_prefix_size, handle,
+                         compressed_cache_key);
+    }
+    if (!contents) {
+      s = GetDataBlockFromCache(key, ckey, block_cache, block_cache_compressed,
+                                ro, block_entry, uncompression_dict, block_type,
+                                get_context);
+      if (block_entry->GetValue()) {
+        // TODO(haoyu): Differentiate cache hit on uncompressed block cache and
+        // compressed block cache.
+        is_cache_hit = true;
+      }
+    }
+
+    // Can't find the block from the cache. If I/O is allowed, read from the
+    // file.
+    if (block_entry->GetValue() == nullptr && !no_io && ro.fill_cache) {
+      Statistics* statistics = rep_->ioptions.statistics;
+      const bool maybe_compressed =
+          block_type != BlockType::kFilter &&
+          block_type != BlockType::kCompressionDictionary &&
+          rep_->blocks_maybe_compressed;
+      const bool do_uncompress = maybe_compressed && !block_cache_compressed;
+      CompressionType raw_block_comp_type;
+      BlockContents raw_block_contents;
+      if (!contents) {
+        StopWatch sw(rep_->ioptions.clock, statistics, READ_BLOCK_GET_MICROS);
+        BlockFetcher block_fetcher(
+            rep_->file.get(), prefetch_buffer, rep_->footer, ro, handle,
+            &raw_block_contents, rep_->ioptions, do_uncompress,
+            maybe_compressed, block_type, uncompression_dict,
+            rep_->persistent_cache_options,
+            GetMemoryAllocator(rep_->table_options),
+            GetMemoryAllocatorForCompressedBlock(rep_->table_options));
+        s = block_fetcher.ReadBlockContents_aio(aiocbList_f);
+        *cache_miss = !is_cache_hit;
+        return s;
+
+        raw_block_comp_type = block_fetcher.get_compression_type();
+        contents = &raw_block_contents;
+        if (get_context) {
+          switch (block_type) {
+            case BlockType::kIndex:
+              ++get_context->get_context_stats_.num_index_read;
+              break;
+            case BlockType::kFilter:
+              ++get_context->get_context_stats_.num_filter_read;
+              break;
+            case BlockType::kData:
+              ++get_context->get_context_stats_.num_data_read;
+              break;
+            default:
+              break;
+          }
+        }
+      } else {
+        raw_block_comp_type = contents->get_compression_type();
+      }
+
+      if (s.ok()) {
+        // If filling cache is allowed and a cache is configured, try to put the
+        // block to the cache.
+        s = PutDataBlockToCache(
+            key, ckey, block_cache, block_cache_compressed, block_entry,
+            contents, raw_block_comp_type, uncompression_dict,
+            GetMemoryAllocator(rep_->table_options), block_type, get_context);
+      }
+    }
+  }
+
+  assert(s.ok() || block_entry->GetValue() == nullptr);
+  return s;
+}
+
+template <typename TBlocklike>
+Status BlockBasedTable::MaybeReadBlockAndLoadToCache_post_aio(
+    FilePrefetchBuffer* prefetch_buffer, const ReadOptions& ro,
+    const BlockHandle& handle, const UncompressionDict& uncompression_dict,
+    CachableEntry<TBlocklike>* block_entry, BlockType block_type,
+    GetContext* get_context, BlockContents* contents,
+    struct aiocb* aiocbList_f) const {
+  assert(block_entry != nullptr);
+  Cache* block_cache = rep_->table_options.block_cache.get();
+  Cache* block_cache_compressed =
+      rep_->table_options.block_cache_compressed.get();
+
+  // First, try to get the block from the cache
+  //
+  // If either block cache is enabled, we'll try to read from it.
+  Status s;
+  char cache_key[kMaxCacheKeyPrefixSize + kMaxVarint64Length];
+  char compressed_cache_key[kMaxCacheKeyPrefixSize + kMaxVarint64Length];
+  Slice key /* key to the block cache */;
+  Slice ckey /* key to the compressed block cache */;
+  if (block_cache != nullptr || block_cache_compressed != nullptr) {
+    // create key for block cache
+    if (block_cache != nullptr) {
+      key = GetCacheKey(rep_->cache_key_prefix, rep_->cache_key_prefix_size,
+                        handle, cache_key);
+    }
+
+    if (block_cache_compressed != nullptr) {
+      ckey = GetCacheKey(rep_->compressed_cache_key_prefix,
+                         rep_->compressed_cache_key_prefix_size, handle,
+                         compressed_cache_key);
+    }
+
+    // Can't find the block from the cache. If I/O is allowed, read from the
+    // file.
+    Statistics* statistics = rep_->ioptions.statistics;
+    const bool maybe_compressed =
+        block_type != BlockType::kFilter &&
+        block_type != BlockType::kCompressionDictionary &&
+        rep_->blocks_maybe_compressed;
+    const bool do_uncompress = maybe_compressed && !block_cache_compressed;
+    CompressionType raw_block_comp_type;
+    BlockContents raw_block_contents;
+    if (!contents) {
+      StopWatch sw(rep_->ioptions.clock, statistics, READ_BLOCK_GET_MICROS);
+      BlockFetcher block_fetcher(
+          rep_->file.get(), prefetch_buffer, rep_->footer, ro, handle,
+          &raw_block_contents, rep_->ioptions, do_uncompress,
+          maybe_compressed, block_type, uncompression_dict,
+          rep_->persistent_cache_options,
+          GetMemoryAllocator(rep_->table_options),
+          GetMemoryAllocatorForCompressedBlock(rep_->table_options));
+      s = block_fetcher.ReadBlockContents_post_aio(aiocbList_f);
+      raw_block_comp_type = block_fetcher.get_compression_type();
+      contents = &raw_block_contents;
+      if (get_context) {
+        switch (block_type) {
+          case BlockType::kIndex:
+            ++get_context->get_context_stats_.num_index_read;
+            break;
+          case BlockType::kFilter:
+            ++get_context->get_context_stats_.num_filter_read;
+            break;
+          case BlockType::kData:
+            ++get_context->get_context_stats_.num_data_read;
+            break;
+          default:
+            break;
+        }
+      }
+    } else {
+      raw_block_comp_type = contents->get_compression_type();
+    }
+
+    if (s.ok()) {
+      // If filling cache is allowed and a cache is configured, try to put the
+      // block to the cache.
+      s = PutDataBlockToCache(
+          key, ckey, block_cache, block_cache_compressed, block_entry,
+          contents, raw_block_comp_type, uncompression_dict,
+          GetMemoryAllocator(rep_->table_options), block_type, get_context);
+    }
+  }
+
+  assert(s.ok() || block_entry->GetValue() == nullptr);
   return s;
 }
 

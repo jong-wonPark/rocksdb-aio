@@ -1188,6 +1188,24 @@ class DBImpl : public DB {
                             bool disable_memtable = false,
                             uint64_t* seq_used = nullptr);
 
+  Status JW_ParallelWriteImpl(const WriteOptions& options, WriteBatch* updates,
+                            WriteCallback* callback = nullptr,
+                            uint64_t* log_used = nullptr, uint64_t log_ref = 0,
+                            bool disable_memtable = false,
+                            uint64_t* seq_used = nullptr);
+
+  Status JW_ParallelWriteImpl_v2(const WriteOptions& options, WriteBatch* updates,
+                            WriteCallback* callback = nullptr,
+                            uint64_t* log_used = nullptr, uint64_t log_ref = 0,
+                            bool disable_memtable = false,
+                            uint64_t* seq_used = nullptr);
+
+  Status JW_ParallelWriteImpl_v3(const WriteOptions& options, WriteBatch* updates,
+                            WriteCallback* callback = nullptr,
+                            uint64_t* log_used = nullptr, uint64_t log_ref = 0,
+                            bool disable_memtable = false,
+                            uint64_t* seq_used = nullptr);
+
   // Write only to memtables without joining any write queue
   Status UnorderedWriteMemtable(const WriteOptions& write_options,
                                 WriteBatch* my_batch, WriteCallback* callback,

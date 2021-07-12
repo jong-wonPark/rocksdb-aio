@@ -219,6 +219,15 @@ class FSRandomAccessFileTracingWrapper : public FSRandomAccessFileWrapper {
                 Slice* result, char* scratch,
                 IODebugContext* dbg) const override;
 
+/*  IOStatus Read_aio(size_t n, const IOOptions& options,
+           IODebugContext* dbg, struct aiocb* aiocbList_f) override {
+    return IOStatus::OK();
+  }
+  IOStatus Read_post_aio(size_t n, const IOOptions& options, Slice* result,
+           char* scratch, IODebugContext* dbg,struct aiocb* aiocbList_f) override {
+    return IOStatus::OK();
+  }*/
+
   IOStatus MultiRead(FSReadRequest* reqs, size_t num_reqs,
                      const IOOptions& options, IODebugContext* dbg) override;
 

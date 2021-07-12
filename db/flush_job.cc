@@ -266,11 +266,18 @@ Status FlushJob::Run(LogsWithPrepTracker* prep_tracker,
          << CompressionTypeToString(output_compression_);
   stream << "lsm_state";
   stream.StartArray();
+  char pmsg[50] = {0x00,};
+  int len_pmsg = 0;
+  len_pmsg = sprintf(pmsg,"ls");
   auto vstorage = cfd_->current()->storage_info();
   for (int level = 0; level < vstorage->num_levels(); ++level) {
     stream << vstorage->NumLevelFiles(level);
+    len_pmsg += sprintf(pmsg+len_pmsg,",%d",vstorage->NumLevelFiles(level));
   }
   stream.EndArray();
+  printf("%s\n",pmsg);
+
+  //printf("ls,%lu,%d\n", db_options_.env->NowMicros(), vstorage->NumLevelFiles(0));
 
   const auto& blob_files = vstorage->GetBlobFiles();
   if (!blob_files.empty()) {
@@ -349,7 +356,7 @@ Status FlushJob::WriteLevel0Table() {
       total_data_size += m->get_data_size();
       total_memory_usage += m->ApproximateMemoryUsage();
     }
-
+    //printf("fs,%lu\n", start_micros);
     event_logger_->Log() << "job" << job_context_->job_id << "event"
                          << "flush_started"
                          << "num_memtables" << mems_.size() << "num_entries"

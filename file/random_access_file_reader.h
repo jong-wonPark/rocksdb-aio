@@ -11,6 +11,7 @@
 #include <atomic>
 #include <sstream>
 #include <string>
+#include <aio.h>
 
 #include "env/file_system_tracer.h"
 #include "port/port.h"
@@ -123,6 +124,13 @@ class RandomAccessFileReader {
   IOStatus Read(const IOOptions& opts, uint64_t offset, size_t n, Slice* result,
                 char* scratch, AlignedBuf* aligned_buf,
                 bool for_compaction = false) const;
+
+  IOStatus Read_aio(const IOOptions& opts, uint64_t offset,
+                size_t n, struct aiocb* aiocbList_f) const;
+
+  IOStatus Read_post_aio(const IOOptions& opts, uint64_t offset,
+                size_t n, Slice* result, char* scratch,
+                AlignedBuf* aligned_buf, struct aiocb* aiocbList_f) const;
 
   // REQUIRES:
   // num_reqs > 0, reqs do not overlap, and offsets in reqs are increasing.
