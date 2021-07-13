@@ -236,6 +236,7 @@ IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset
       aiocbList_f->aio_nbytes = read_size;
       aiocbList_f->aio_reqprio = 0;
       aiocbList_f->aio_offset = aligned_offset;
+      aiocbList_f->aio_sigevent.sigev_notify = SIGEV_NONE;
 
       io_s = file_->Read_aio(allowed, opts, nullptr, aiocbList_f);
     }

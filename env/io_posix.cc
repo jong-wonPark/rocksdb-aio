@@ -562,6 +562,7 @@ PosixRandomAccessFile::PosixRandomAccessFile(
 
 PosixRandomAccessFile::~PosixRandomAccessFile() { close(fd_); }
 
+
 IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
                                      const IOOptions& /*opts*/, Slice* result,
                                      char* scratch,
@@ -575,28 +576,59 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
   ssize_t r = -1;
   size_t left = n;
   char* ptr = scratch;
-  unsigned long lo, hi, lo2, hi2;
-  unsigned long long oper_start, oper_end, nano_sec;
-  int cur_tid = gettid();
-  int count = 0;
-  int reason = 0;
-  while (left > 0) {
-    count += 1;
-    asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
-    r = pread(fd_, ptr, left, static_cast<off_t>(offset));
-    asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
-    oper_start = ((unsigned long long)hi << 32) | lo;
-    oper_end = ((unsigned long long)hi2 << 32) | lo2;
-    nano_sec = (oper_end - oper_start) * 5 / 14;
-    if (false && cur_tid%16 == 0)
-      printf("PRD,%llu\n",nano_sec);
 
-    if (r <= 0) {
+  //struct aiocb aiocbList;
+  //aiocbList.aio_fildes = fd_;
+
+  while (left > 0) {
+    r = pread(fd_, ptr, left, static_cast<off_t>(offset));
+    ///////////////
+    /*
+    aiocbList.aio_buf = ptr;
+    aiocbList.aio_nbytes = n;
+    aiocbList.aio_offset = offset;
+    aiocbList.aio_reqprio = 0;
+    aiocbList.aio_sigevent.sigev_notify = SIGEV_NONE;
+    r = aio_read(&aiocbList);
+    if (r < 0) {
+      printf("errno:%d\n",errno);
       if (r == -1 && errno == EINTR) {
-	reason = 1;
         continue;
       }
-      reason = 2;
+      break;
+    }
+    int count1 = 0;
+    while(1){
+      int tmp2 = 0;
+      for (int tmp1 = 0;tmp1 < 1000;tmp1++)
+	      tmp2++;
+      count1 += 1;
+      int status = aio_error(&aiocbList);
+	switch (status) {
+		case 0:
+		//printf("I/O succeeded\n");
+		break;
+		case EINPROGRESS:
+		//printf("In progress\n");
+		break;
+		case ECANCELED:
+		//printf("Canceled\n");
+		break;
+		default:
+		perror("aio_error");
+		break;
+	}
+      if (status != EINPROGRESS)
+	      break;
+    }
+    r = aio_return(&aiocbList);
+    printf("count1:%d,%ld\n",count1,r);
+    */
+	    ///////////////////////
+    if (r <= 0) {
+      if (r == -1 && errno == EINTR) {
+        continue;
+      }
       break;
     }
     ptr += r;
@@ -608,9 +640,6 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
       // of the file.
       break;
     }
-  }
-  if (count > 1){
-    printf("%d,%d,%d\n",cur_tid,count,reason);
   }
 
   if (r < 0) {
@@ -638,7 +667,7 @@ IOStatus PosixRandomAccessFile::Read_aio(size_t n,
   while (left > 0) {
     r = aio_read(aiocbList_f);
 
-    if (r <= 0) {
+    if (r < 0) {
       if (r == -1 && errno == EINTR) {
         continue;
       }
