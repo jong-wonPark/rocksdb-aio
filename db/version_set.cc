@@ -2033,6 +2033,31 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
   }
 }
 
+void Monitor_aio(struct aiocb* aiocbList_f) {
+  int status_aio;
+  while(1){
+    int tmp2 = 0;
+    for (int tmp1 = 0; tmp1 < 200; tmp1++)
+      tmp2++;
+    status_aio = aio_error(aiocbList_f);
+    switch (status_aio) {
+      case 0:
+      break;
+      case EINPROGRESS:
+      break;
+      case ECANCELED:
+      printf("Canceled\n");
+      break;
+      default:
+      perror("aio_error");
+      break;
+    }
+    if (status_aio != EINPROGRESS)
+      break;
+  }
+  return;
+}
+
 void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                   PinnableSlice* value, std::string* timestamp, Status* status,
                   MergeContext* merge_context,
@@ -2082,11 +2107,39 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   FdWithKeyRange* f = fp.GetNextFile();
 
   // struct for aio
-  struct aiocb aiocbList;
-  bool cache_miss = true;
+  //int access_ratio = storage_info_.get_access_ratio();
+  int max_access_file = storage_info_.num_levels() + storage_info_.NumLevelFiles(0);
+  int io_file_cur = 0, io_file_end = 0;
+  //int num_access_file = 0, num_find_file = -1, predict_access_file = access_ratio * max_access_file / 100;
+  // io_file_cur/end is same that means there is no I/O inprogress
+  unsigned long long time_list[max_access_file][2] = {0,};
+  struct aiocb aiocbList[max_access_file];
+  BlockHandle bhandle[max_access_file];
+  struct FdWithKeyRange_List {
+    FdWithKeyRange_List() {
+      f_oldest = nullptr;
+      level = 0;
+      last_in_level = 0;
+    }
+    FdWithKeyRange* f_oldest;
+    unsigned int level;
+    unsigned int last_in_level;
+  };
+  struct FdWithKeyRange_List fmetadata_list[max_access_file];
 
+  bool cache_miss = true, already_found = false, no_more_next = false;
+  int level, last_in_level, status_aio;
+  unsigned long lo, hi, lo2, hi2;
+  unsigned long long oper_start, oper_end, pre_micro_sec, while_start, predict_iofinish_sec = 0;
+  unsigned long long pre_total_sec = 0, io_total_sec = 0, cur_total_sec = 0;
+  unsigned long long pre_avg_sec = storage_info_.get_pre_avg_micro_time(),
+    io_avg_sec = storage_info_.get_io_avg_micro_time();
+    //post_avg_sec = storage_info_.get_post_avg_micro_time();
+
+  int cur_tid = gettid();
+  asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
+  while_start = ((unsigned long long)hi << 32) | lo;
   while (f != nullptr) {
-
     if (*max_covering_tombstone_seq > 0) {
       // The remaining files we look at will only contain covered keys, so we
       // stop here.
@@ -2100,55 +2153,102 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
         GetPerfLevel() >= PerfLevel::kEnableTimeExceptForMutex &&
         get_perf_context()->per_level_perf_context_enabled;
     StopWatchNano timer(clock_, timer_enabled /* auto_start */);
-    
-    BlockHandle bhandle;
+
+    level = fp.GetHitFileLevel();
+    last_in_level = fp.IsHitFileLastInLevel();
+    printf("get_aiostart\n");
+    asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
     *status = table_cache_->Get_aio(
         read_options, *internal_comparator(), *f->file_metadata, ikey,
-        &get_context, &aiocbList, &cache_miss, &bhandle, mutable_cf_options_.prefix_extractor.get(),
-        cfd_->internal_stats()->GetFileReadHist(fp.GetHitFileLevel()),
-        IsFilterSkipped(static_cast<int>(fp.GetHitFileLevel()),
-                        fp.IsHitFileLastInLevel()),
-        fp.GetHitFileLevel(), max_file_size_for_l0_meta_pin_);
+        &get_context, &aiocbList[io_file_cur], &cache_miss, &bhandle[io_file_end],
+        mutable_cf_options_.prefix_extractor.get(),
+        cfd_->internal_stats()->GetFileReadHist(level),
+        IsFilterSkipped(static_cast<int>(level),
+                        last_in_level),
+        level, max_file_size_for_l0_meta_pin_);
+    asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+    oper_start = ((unsigned long long)hi << 32) | lo;
+    oper_end = ((unsigned long long)hi2 << 32) | lo2;
+    pre_micro_sec = (oper_end - oper_start) * 5 / 14000;
+    cur_total_sec = (oper_end - while_start) * 5 / 14000;
+    printf("%d,get_aio,%llu,%d,%d\n",cur_tid,cur_total_sec,io_file_cur,cache_miss);
 
     if (cache_miss){
-      if (!status->ok()) {
-        return;
+      time_list[io_file_cur][0] = cur_total_sec;
+      pre_total_sec += pre_micro_sec;
+      fmetadata_list[io_file_cur].f_oldest = f;
+      fmetadata_list[io_file_cur].level = fp.GetHitFileLevel();
+      fmetadata_list[io_file_cur].last_in_level = fp.IsHitFileLastInLevel();
+      if ((io_file_cur - io_file_end) == 0) {
+        predict_iofinish_sec = cur_total_sec + io_avg_sec;
       }
-      while(1){
-        int tmp2 = 0;
-        for (int tmp1 = 0; tmp1 < 200; tmp1++)
-          tmp2++;
-        int status_aio = aio_error(&aiocbList);
+      else {
+        predict_iofinish_sec -= pre_micro_sec;
+      }
+      io_file_cur += 1;
+
+      if(io_file_cur != io_file_end) {
+        status_aio = aio_error(&aiocbList[io_file_end]);
         switch (status_aio) {
-          case 0:
-          break;
-          case EINPROGRESS:
-          //printf("In progress\n");
-          break;
+          case 0:{
+  post_aio:
+            time_list[io_file_end][1] = cur_total_sec;
+            f = fmetadata_list[io_file_end].f_oldest;
+            level = fmetadata_list[io_file_end].level;
+            last_in_level = fmetadata_list[io_file_end].last_in_level;
+            asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
+            *status = table_cache_->Get_post_aio(
+                read_options, *internal_comparator(), *f->file_metadata, ikey,
+                            &get_context, &aiocbList[io_file_end], &bhandle[io_file_end],
+                mutable_cf_options_.prefix_extractor.get(),
+                            cfd_->internal_stats()->GetFileReadHist(level),
+                            IsFilterSkipped(static_cast<int>(level),
+                            last_in_level),
+                            level, max_file_size_for_l0_meta_pin_);
+            asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+            oper_start = ((unsigned long long)hi << 32) | lo;
+            oper_end = ((unsigned long long)hi2 << 32) | lo2;
+            cur_total_sec = (oper_end - while_start) * 5 / 14000;
+            printf("%d,get_post_aio,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            io_file_end += 1;
+            if (io_file_cur != io_file_end){
+              predict_iofinish_sec = time_list[io_file_end][0] + io_avg_sec;
+            }
+            break;
+          }
+          case EINPROGRESS:{
+            if (predict_iofinish_sec < cur_total_sec + pre_avg_sec) {
+              // go to monitoring and go to post process
+	      printf("%d,monitor-notime-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+              Monitor_aio(&aiocbList[io_file_end]);
+	      printf("%d,monitor-notime-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+              asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+              oper_end = ((unsigned long long)hi2 << 32) | lo2;
+              cur_total_sec = (oper_end - while_start) * 5 / 14000;
+              goto post_aio;
+            }
+            else {
+              goto next_file;
+            }
+            break;
+          }
           case ECANCELED:
-          printf("Canceled\n");
           break;
           default:
           perror("aio_error");
           break;
         }
-        if (status_aio != EINPROGRESS)
-          break;
       }
-      *status = table_cache_->Get_post_aio(
-		      read_options, *internal_comparator(), *f->file_metadata, ikey,
-                      &get_context, &aiocbList, &bhandle,
-		      mutable_cf_options_.prefix_extractor.get(),
-                      cfd_->internal_stats()->GetFileReadHist(fp.GetHitFileLevel()),
-                      IsFilterSkipped(static_cast<int>(fp.GetHitFileLevel()),
-                      fp.IsHitFileLastInLevel()),
-                      fp.GetHitFileLevel(), max_file_size_for_l0_meta_pin_);
+
+      if (!status->ok()) {
+        return;
+      }
     }
 
     // TODO: examine the behavior for corrupted key
     if (timer_enabled) {
       PERF_COUNTER_BY_LEVEL_ADD(get_from_table_nanos, timer.ElapsedNanos(),
-                                fp.GetHitFileLevel());
+                                level);
     }
     if (!status->ok()) {
       return;
@@ -2161,26 +2261,86 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
       get_context.ReportCounters();
     }
     switch (get_context.State()) {
-      case GetContext::kNotFound:
+      case GetContext::kNotFound:{
+        if (already_found) {
+          if(io_file_cur != io_file_end) {
+            // go to monitoring and go to post process
+	    printf("%d,monitor-already-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            Monitor_aio(&aiocbList[io_file_end]);
+	    printf("%d,monitor-already-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+            oper_end = ((unsigned long long)hi2 << 32) | lo2;
+            cur_total_sec = (oper_end - while_start) * 5 / 14000;
+            goto post_aio;
+          }
+          else{
+            for (int iter_io_count = 0;iter_io_count<io_file_cur;iter_io_count++){
+              io_total_sec += (time_list[iter_io_count][1] - time_list[iter_io_count][0]);
+            }
+            storage_info_.set_pre_avg_micro_time(pre_total_sec / io_file_cur);
+            storage_info_.set_io_avg_micro_time(io_total_sec / io_file_cur);
+            return;
+          }
+        }
+        /*  int cancel_status;
+          while (1) {
+            cancel_status = aio_cancel(aiocbList[io_file_cur].aio_fildes, &aiocbList[io_file_cur]);
+            if (cancel_status == AIO_CANCELED || cancel_status == AIO_ALLDONE){
+              io_file_cur -= 1;
+            } else if (cancel_status == AIO_NOTCANCELED) {
+              break;
+            } else if (cancel_status == -1){
+              perror("aio_cancel");
+            }
+          }
+          while(io_file_cur != io_file_end) {
+            printf("%d,monitor-1by1-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            Monitor_aio(&aiocbList[io_file_end]);
+	    printf("%d,monitor-1by1-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            io_file_end += 1;
+          }
+          for (int iter_io_count = 0;iter_io_count<io_file_cur;iter_io_count++){
+            io_total_sec += (time_list[iter_io_count][1] - time_list[iter_io_count][0]);
+          }
+          storage_info_.set_pre_avg_micro_time(pre_total_sec / io_file_cur);
+          storage_info_.set_io_avg_micro_time(io_total_sec / io_file_cur);
+          return;
+        }*/
         // Keep searching in other files
+        if(io_file_cur != io_file_end) {
+          if (predict_iofinish_sec < cur_total_sec + pre_avg_sec) {
+            // go to monitoring and go to post process
+	    printf("%d,monitor-notime2-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            Monitor_aio(&aiocbList[io_file_end]);
+	    printf("%d,monitor-notime2-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+            oper_end = ((unsigned long long)hi2 << 32) | lo2;
+            cur_total_sec = (oper_end - while_start) * 5 / 14000;
+            goto post_aio;
+          }
+          else {
+            goto next_file;
+          }
+        }
         break;
+      }
       case GetContext::kMerge:
         // TODO: update per-level perfcontext user_key_return_count for kMerge
         break;
       case GetContext::kFound:{
-        if (fp.GetHitFileLevel() == 0) {
+        if (already_found) {
+          cache_miss = true;
+        }
+        if (level == 0) {
           RecordTick(db_statistics_, GET_HIT_L0);
-    //printf("L0,");
-        } else if (fp.GetHitFileLevel() == 1) {
+        } else if (level == 1) {
           RecordTick(db_statistics_, GET_HIT_L1);
-    //printf("L1,");
-        } else if (fp.GetHitFileLevel() >= 2) {
+        } else if (level >= 2) {
           RecordTick(db_statistics_, GET_HIT_L2_AND_UP);
-    //printf("L2,");
         }
 
         PERF_COUNTER_BY_LEVEL_ADD(user_key_return_count, 1,
-                                  fp.GetHitFileLevel());
+                                  level);
 
         if (is_blob_index) {
           if (do_merge && value) {
@@ -2194,6 +2354,45 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
               }
               return;
             }
+          }
+        }
+        if ( io_file_cur != io_file_end) {
+          if (cache_miss == false) {
+            // need to wait io files to check that recent value exist.
+            // but no more need to search on next file
+	    printf("%d,monitor-hitfound-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            Monitor_aio(&aiocbList[io_file_end]);
+	    printf("%d,monitor-hitfound-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+            oper_end = ((unsigned long long)hi2 << 32) | lo2;
+            cur_total_sec = (oper_end - while_start) * 5 / 14000;
+            already_found = true;
+            get_context.SetState(GetContext::kNotFound);
+            goto post_aio;
+          }
+          else {
+            int cancel_status;
+            while (1) {
+              cancel_status = aio_cancel(aiocbList[io_file_cur].aio_fildes, &aiocbList[io_file_cur]);
+              if (cancel_status == AIO_CANCELED || cancel_status == AIO_ALLDONE){
+                io_file_cur -= 1;
+              } else if (cancel_status == AIO_NOTCANCELED) {
+                break;
+              } else if (cancel_status == -1){
+                perror("aio_cancel");
+              }
+            }
+            while(io_file_cur != io_file_end) {
+              printf("%d,monitor-justwait-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+              Monitor_aio(&aiocbList[io_file_end]);
+	      printf("%d,monitor-justwait-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+              io_file_end += 1;
+            }
+            for (int iter_io_count = 0;iter_io_count<io_file_cur;iter_io_count++){
+              io_total_sec += (time_list[iter_io_count][1] - time_list[iter_io_count][0]);
+            }
+            storage_info_.set_pre_avg_micro_time(pre_total_sec / io_file_cur);
+            storage_info_.set_io_avg_micro_time(io_total_sec / io_file_cur);
           }
         }
 
@@ -2213,7 +2412,28 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             "ROCKSDB_NAMESPACE::blob_db::BlobDB instead.");
         return;
     }
+next_file:
+    if (no_more_next) {
+      printf("%d,monitor-nomore2-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+      Monitor_aio(&aiocbList[io_file_end]);
+      printf("%d,monitor-nomore2-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+      asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+      oper_end = ((unsigned long long)hi2 << 32) | lo2;
+      cur_total_sec = (oper_end - while_start) * 5 / 14000;
+      goto post_aio;
+    }
     f = fp.GetNextFile();
+    if (f == nullptr) {
+      no_more_next = true;
+      printf("%d,monitor-nomore1-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+      Monitor_aio(&aiocbList[io_file_end]);
+      printf("%d,monitor-nomore1-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+      asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+      oper_end = ((unsigned long long)hi2 << 32) | lo2;
+      cur_total_sec = (oper_end - while_start) * 5 / 14000;
+      goto post_aio;
+    }
+    //num_access_file += 1;
   }
 
   if (db_statistics_ != nullptr) {

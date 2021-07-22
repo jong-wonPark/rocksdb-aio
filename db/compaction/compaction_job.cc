@@ -889,14 +889,14 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
 
   stream << "lsm_state";
   stream.StartArray();
-  char pmsg[50] = {0x00,};
+  /*char pmsg[50] = {0x00,};
   int len_pmsg = 0;
-  len_pmsg = sprintf(pmsg,"ls");
+  len_pmsg = sprintf(pmsg,"ls");*/
   for (int level = 0; level < vstorage->num_levels(); ++level) {
     stream << vstorage->NumLevelFiles(level);
-    len_pmsg += sprintf(pmsg+len_pmsg,",%d",vstorage->NumLevelFiles(level));
+    //len_pmsg += sprintf(pmsg+len_pmsg,",%d",vstorage->NumLevelFiles(level));
   }
-  printf("%s\n",pmsg);
+  //printf("%s\n",pmsg);
   stream.EndArray();
 
   if (!blob_files.empty()) {

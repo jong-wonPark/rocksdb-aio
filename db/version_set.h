@@ -513,12 +513,51 @@ class VersionStorageInfo {
                                      const Slice& largest_user_key,
                                      int last_level, int last_l0_idx);
 
+  int get_access_ratio(){
+    return access_ratio_;
+  }
+  void set_access_ratio(int access_ratio){
+    access_ratio_ = access_ratio;
+    return;
+  }
+
+  unsigned long long get_pre_avg_micro_time(){
+    return pre_avg_micro_time_;
+  }
+  void set_pre_avg_micro_time(unsigned long long pre_avg_micro_time){
+    pre_avg_micro_time_ = pre_avg_micro_time;
+    return;
+  }
+
+  unsigned long long get_io_avg_micro_time(){
+    return io_avg_micro_time_;
+  }
+  void set_io_avg_micro_time(unsigned long long io_avg_micro_time){
+    io_avg_micro_time_ = io_avg_micro_time;
+    return;
+  }
+
+  unsigned long long get_post_avg_micro_time(){
+    return post_avg_micro_time_;
+  }
+  void set_post_avg_micro_time(unsigned long long post_avg_micro_time){
+    post_avg_micro_time_ = post_avg_micro_time;
+    return;
+  }
+
  private:
   const InternalKeyComparator* internal_comparator_;
   const Comparator* user_comparator_;
   int num_levels_;            // Number of levels
   int num_non_empty_levels_;  // Number of levels. Any level larger than it
                               // is guaranteed to be empty.
+  // ratio of access file No. compared to (total level No. + file No. in L0)
+  int access_ratio_ = 90;
+
+  unsigned long long pre_avg_micro_time_ = 8;
+  unsigned long long io_avg_micro_time_ = 25;
+  unsigned long long post_avg_micro_time_ = 7;
+
   // Per-level max bytes
   std::vector<uint64_t> level_max_bytes_;
 

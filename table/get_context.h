@@ -137,6 +137,7 @@ class GetContext {
   void SaveValue(const Slice& value, SequenceNumber seq);
 
   GetState State() const { return state_; }
+  void SetState(GetState new_state) {state_ = new_state;}
 
   SequenceNumber* max_covering_tombstone_seq() {
     return max_covering_tombstone_seq_;
