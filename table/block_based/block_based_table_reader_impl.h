@@ -150,8 +150,10 @@ TBlockIter* BlockBasedTable::NewDataBlockIterator_aio(
                                       : UncompressionDict::GetEmptyDict();
 
   CachableEntry<Block> block;
+  //printf("NewDatablockIter start\n");
   s = RetrieveBlock_aio(prefetch_buffer, ro, handle, dict, &block, block_type,
                     get_context, /* use_cache */ true, aiocbList_f, cache_miss);
+  //printf("NewDatablockIter end\n");
   if (!s.ok()) {
     assert(block.IsEmpty());
     iter->Invalidate(s);

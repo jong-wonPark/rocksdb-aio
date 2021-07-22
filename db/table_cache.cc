@@ -541,10 +541,10 @@ Status TableCache::Get_aio(const ReadOptions& options,
     }
     if (s.ok()) {
       get_context->SetReplayLog(row_cache_entry);  // nullptr if no cache.
-
+//printf("table_cache start\n");
       s = t->Get_aio(options, k, get_context, prefix_extractor, aiocbList_f,
 		      cache_miss, bhandle, skip_filters);
-
+//printf("table_cache end\n");
       get_context->SetReplayLog(nullptr);
     } else if (options.read_tier == kBlockCacheTier && s.IsIncomplete()) {
       // Couldn't find Table in cache but treat as kFound if no_io set

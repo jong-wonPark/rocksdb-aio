@@ -369,9 +369,11 @@ IOStatus BlockFetcher::ReadBlockContents_aio(struct aiocb* aiocbList_f) {
     if (io_status_.ok()) {
       if (file_->use_direct_io()) {
         PERF_TIMER_GUARD(block_read_time);
+	//printf("readblock start\n");
         io_status_ =
             file_->Read_aio(opts, handle_.offset(), block_size_with_trailer_,
                         aiocbList_f);
+	//printf("readblock end\n");
       } else {
         PrepareBufferForBlockFromFile();
         PERF_TIMER_GUARD(block_read_time);

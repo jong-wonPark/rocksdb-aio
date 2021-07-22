@@ -666,8 +666,7 @@ IOStatus PosixRandomAccessFile::Read_aio(size_t n,
 
   while (left > 0) {
     r = aio_read(aiocbList_f);
-
-    if (r < 0) {
+    if (r <= 0) {
       if (r == -1 && errno == EINTR) {
         continue;
       }

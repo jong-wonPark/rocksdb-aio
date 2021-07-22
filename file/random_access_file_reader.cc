@@ -238,7 +238,9 @@ IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset
       aiocbList_f->aio_offset = aligned_offset;
       aiocbList_f->aio_sigevent.sigev_notify = SIGEV_NONE;
 
+      //printf("Random read start\n");
       io_s = file_->Read_aio(allowed, opts, nullptr, aiocbList_f);
+      //printf("Random read end\n");
     }
 #endif  // !ROCKSDB_LITE
   }

@@ -2630,11 +2630,13 @@ Status BlockBasedTable::Get_aio(const ReadOptions& read_options, const Slice& ke
           /*get_from_user_specified_snapshot=*/read_options.snapshot !=
               nullptr};
       DataBlockIter biter;
+      //printf("BBTR get_aio start\n");
       NewDataBlockIterator_aio<DataBlockIter>(
           read_options, v.handle, &biter, BlockType::kData, get_context,
           &lookup_data_block_context,
           /*s=*/Status(), /*prefetch_buffer*/ nullptr,
           aiocbList_f, cache_miss);
+      //printf("BBTR get_aio end\n");
       if (*cache_miss){
         bhandle->set_offset(v.handle.offset());
         bhandle->set_size(v.handle.size());
@@ -2767,11 +2769,12 @@ Status BlockBasedTable::RetrieveBlock_aio(
 
   Status s;
   if (use_cache) {
+    //printf("Retrieve start\n");
     s = MaybeReadBlockAndLoadToCache_aio(prefetch_buffer, ro, handle,
                                      uncompression_dict, block_entry,
                                      block_type, get_context, /*contents=*/nullptr,
 				     aiocbList_f, cache_miss);
-
+//printf("Retrieve end\n");
     if (!s.ok()) {
       return s;
     }
@@ -2878,7 +2881,9 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache_aio(
             rep_->persistent_cache_options,
             GetMemoryAllocator(rep_->table_options),
             GetMemoryAllocatorForCompressedBlock(rep_->table_options));
+	//printf("Mayberead start\n");
         s = block_fetcher.ReadBlockContents_aio(aiocbList_f);
+	//printf("Mayberead end\n");
         *cache_miss = !is_cache_hit;
         return s;
 
