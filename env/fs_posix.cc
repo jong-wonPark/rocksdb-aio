@@ -175,6 +175,7 @@ class PosixFileSystem : public FileSystem {
     if (options.use_direct_reads && !options.use_mmap_reads) {
 #ifdef OS_MACOSX
       if (fcntl(fd, F_NOCACHE, 1) == -1) {
+printf("closefd-NSF1,%d\n",fd);
         close(fd);
         return IOError("While fcntl NoCache", fname, errno);
       }
@@ -185,6 +186,7 @@ class PosixFileSystem : public FileSystem {
         file = fdopen(fd, "r");
       } while (file == nullptr && errno == EINTR);
       if (file == nullptr) {
+	      printf("closefd-NSF2,%d\n",fd);
         close(fd);
         return IOError("While opening file for sequentially read", fname,
                        errno);
@@ -240,15 +242,18 @@ class PosixFileSystem : public FileSystem {
               new PosixMmapReadableFile(fd, fname, base, size, options));
         } else {
           s = IOError("while mmap file for read", fname, errno);
+	  printf("closefd-NRAF1,%d\n",fd);
           close(fd);
         }
       } else {
+	      printf("closefd-NRAF2,%d\n",fd);
         close(fd);
       }
     } else {
       if (options.use_direct_reads && !options.use_mmap_reads) {
 #ifdef OS_MACOSX
         if (fcntl(fd, F_NOCACHE, 1) == -1) {
+		printf("closefd-NRAF3,%d\n",fd);
           close(fd);
           return IOError("while fcntl NoCache", fname, errno);
         }
@@ -328,6 +333,7 @@ class PosixFileSystem : public FileSystem {
     } else if (options.use_direct_writes && !options.use_mmap_writes) {
 #ifdef OS_MACOSX
       if (fcntl(fd, F_NOCACHE, 1) == -1) {
+	      printf("closefdi-OWF1,%d\n",fd);
         close(fd);
         s = IOError("While fcntl NoCache an opened file for appending", fname,
                     errno);
@@ -336,6 +342,7 @@ class PosixFileSystem : public FileSystem {
 #elif defined(OS_SOLARIS)
       if (directio(fd, DIRECTIO_ON) == -1) {
         if (errno != ENOTTY) {  // ZFS filesystems don't support DIRECTIO_ON
+		printf("closefd-OWF2,%d\n",fd);
           close(fd);
           s = IOError("While calling directio()", fname, errno);
           return s;
@@ -415,6 +422,7 @@ class PosixFileSystem : public FileSystem {
     // rename into place
     if (rename(old_fname.c_str(), fname.c_str()) != 0) {
       s = IOError("while rename file to " + fname, old_fname, errno);
+      printf("closefd-RWF1,%d\n",fd);
       close(fd);
       return s;
     }
@@ -434,6 +442,7 @@ class PosixFileSystem : public FileSystem {
     } else if (options.use_direct_writes && !options.use_mmap_writes) {
 #ifdef OS_MACOSX
       if (fcntl(fd, F_NOCACHE, 1) == -1) {
+	      printf("closefd-RWF2,%d\n",fd);
         close(fd);
         s = IOError("while fcntl NoCache for reopened file for append", fname,
                     errno);
@@ -442,6 +451,7 @@ class PosixFileSystem : public FileSystem {
 #elif defined(OS_SOLARIS)
       if (directio(fd, DIRECTIO_ON) == -1) {
         if (errno != ENOTTY) {  // ZFS filesystems don't support DIRECTIO_ON
+		printf("closefd-RWF3,%d\n",fd);
           close(fd);
           s = IOError("while calling directio()", fname, errno);
           return s;
@@ -527,6 +537,7 @@ class PosixFileSystem : public FileSystem {
     }
     if (fd >= 0) {
       // don't need to keep it open after mmap has been called
+      printf("closefd-NMMFB1,%d\n",fd);
       close(fd);
     }
     return status;
@@ -577,6 +588,7 @@ class PosixFileSystem : public FileSystem {
           IOError("when open a file for new logger", fname, errno));
     }
     if (f == nullptr) {
+	    printf("closefd-NL1,%d\n",fd);
       close(fd);
       result->reset();
       return status_to_io_status(
@@ -832,6 +844,7 @@ class PosixFileSystem : public FileSystem {
       // lockedfiles
       locked_files.erase(fname);
       result = IOError("While lock file", fname, errno);
+      printf("closefd-LF1,%d\n",fd);
       close(fd);
     } else {
       SetFD_CLOEXEC(fd, nullptr);
@@ -858,6 +871,7 @@ class PosixFileSystem : public FileSystem {
     } else if (LockOrUnlock(my_lock->fd_, false) == -1) {
       result = IOError("unlock", my_lock->filename, errno);
     }
+    printf("closefd-UF1,%d\n",my_lock->fd_);
     close(my_lock->fd_);
     delete my_lock;
     mutex_locked_files.Unlock();
@@ -930,6 +944,7 @@ class PosixFileSystem : public FileSystem {
     if (fstat(fd, &sbuf) < 0) {
       io_s = IOError("While doing stat for IsDirectory()", path, errno);
     }
+    printf("closefd-ID1,%d\n",fd);
     close(fd);
     if (io_s.ok() && nullptr != is_dir) {
       *is_dir = S_ISDIR(sbuf.st_mode);

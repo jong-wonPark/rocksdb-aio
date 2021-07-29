@@ -126,7 +126,7 @@ class RandomAccessFileReader {
                 bool for_compaction = false) const;
 
   IOStatus Read_aio(const IOOptions& opts, uint64_t offset,
-                size_t n, struct aiocb* aiocbList_f) const;
+                size_t n, struct aiocb* aiocbList_f, char** new_buf) const;
 
   IOStatus Read_post_aio(const IOOptions& opts, uint64_t offset,
                 size_t n, Slice* result, char* scratch,

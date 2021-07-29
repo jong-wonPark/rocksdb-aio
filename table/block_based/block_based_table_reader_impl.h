@@ -124,7 +124,7 @@ TBlockIter* BlockBasedTable::NewDataBlockIterator_aio(
     BlockType block_type, GetContext* get_context,
     BlockCacheLookupContext* lookup_context, Status s,
     FilePrefetchBuffer* prefetch_buffer, struct aiocb* aiocbList_f,
-    bool* cache_miss) const {
+    bool* cache_miss, char** new_buf) const {
   PERF_TIMER_GUARD(new_table_block_iter_nanos);
 
   TBlockIter* iter = input_iter != nullptr ? input_iter : new TBlockIter;
@@ -151,7 +151,7 @@ TBlockIter* BlockBasedTable::NewDataBlockIterator_aio(
 
   CachableEntry<Block> block;
   s = RetrieveBlock_aio(prefetch_buffer, ro, handle, dict, &block, block_type,
-                    get_context, /* use_cache */ true, aiocbList_f, cache_miss);
+                    get_context, /* use_cache */ true, aiocbList_f, cache_miss, new_buf);
   if (!s.ok()) {
     assert(block.IsEmpty());
     iter->Invalidate(s);

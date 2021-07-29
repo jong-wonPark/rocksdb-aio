@@ -68,7 +68,7 @@ class BlockFetcher {
         for_compaction_(for_compaction) {}
 
   IOStatus ReadBlockContents();
-  IOStatus ReadBlockContents_aio(struct aiocb* aiocbList_f);
+  IOStatus ReadBlockContents_aio(struct aiocb* aiocbList_f, char** new_buf);
   IOStatus ReadBlockContents_post_aio(struct aiocb* aiocbList_f);
   CompressionType get_compression_type() const { return compression_type_; }
 

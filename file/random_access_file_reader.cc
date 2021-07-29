@@ -66,6 +66,12 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
       AlignedBuffer buf;
       buf.Alignment(alignment);
       buf.AllocateNewBuffer(read_size);
+
+      //size_t new_capacity = Roundup(read_size,alignment);
+      //char* new_buf = new char[new_capacity + alignment];
+      //char* new_bufstart = reinterpret_cast<char*>(
+      //  (reinterpret_cast<uintptr_t>(new_buf) + (alignment - 1)) &
+      //  ~static_cast<uintptr_t>(alignment - 1));
       int count = 0;
       while (buf.CurrentSize() < read_size) {
         count++;
@@ -204,7 +210,7 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
 }
 
 IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset,
-                                      size_t n, struct aiocb* aiocbList_f) const {
+                                      size_t n, struct aiocb* aiocbList_f, char** new_buf) const {
   TEST_SYNC_POINT_CALLBACK("RandomAccessFileReader::Read", nullptr);
   IOStatus io_s;
   {
@@ -232,7 +238,10 @@ IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset
       assert(!opts.timeout.count() || allowed == read_size);
 
       // aio structure initialize
-      aiocbList_f->aio_buf = malloc(read_size);
+      *new_buf = new char[Roundup(read_size, alignment) + alignment];
+      aiocbList_f->aio_buf = reinterpret_cast<char*>(
+                          (reinterpret_cast<uintptr_t>(*new_buf) + (512 - 1)) &
+                          ~static_cast<uintptr_t>(512 - 1));;
       aiocbList_f->aio_nbytes = read_size;
       aiocbList_f->aio_reqprio = 0;
       aiocbList_f->aio_offset = aligned_offset;

@@ -43,7 +43,7 @@ class MockTableReader : public TableReader {
 
   Status Get_aio(const ReadOptions& , const Slice& ,
              GetContext* , const SliceTransform* ,
-             struct aiocb* , bool* , BlockHandle* ,
+             struct aiocb* , bool* , BlockHandle* , char** ,
              bool ) override {
     return Status::OK();
   }

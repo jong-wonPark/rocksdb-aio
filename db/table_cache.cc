@@ -486,7 +486,7 @@ Status TableCache::Get_aio(const ReadOptions& options,
                        const InternalKeyComparator& internal_comparator,
                        const FileMetaData& file_meta, const Slice& k,
                        GetContext* get_context, struct aiocb* aiocbList_f, bool* cache_miss,
-                       BlockHandle *bhandle, const SliceTransform* prefix_extractor,
+                       BlockHandle *bhandle, char** new_buf, const SliceTransform* prefix_extractor,
                        HistogramImpl* file_read_hist, bool skip_filters,
                        int level, size_t max_file_size_for_l0_meta_pin) {
   auto& fd = file_meta.fd;
@@ -536,14 +536,11 @@ Status TableCache::Get_aio(const ReadOptions& options,
             range_del_iter->MaxCoveringTombstoneSeqnum(ExtractUserKey(k)));
       }
     }
-    if (handle != nullptr) {
-      ReleaseHandle(handle);
-    }
     if (s.ok()) {
       get_context->SetReplayLog(row_cache_entry);  // nullptr if no cache.
 
       s = t->Get_aio(options, k, get_context, prefix_extractor, aiocbList_f,
-		      cache_miss, bhandle, skip_filters);
+		      cache_miss, bhandle, new_buf, skip_filters);
 
       get_context->SetReplayLog(nullptr);
     } else if (options.read_tier == kBlockCacheTier && s.IsIncomplete()) {
@@ -553,7 +550,9 @@ Status TableCache::Get_aio(const ReadOptions& options,
       done = true;
     }
   }
-
+  if (handle != nullptr) {
+    ReleaseHandle(handle);
+  }
   return s;
 }
 
@@ -592,11 +591,11 @@ Status TableCache::Get_post_aio(const ReadOptions& options,
           range_del_iter->MaxCoveringTombstoneSeqnum(ExtractUserKey(k)));
     }
   }
-  if (handle != nullptr) {
-    ReleaseHandle(handle);
-  }
   if (s.ok()) {
     s = t->Get_post_aio(options, k, get_context, aiocbList_f, bhandle);
+  }
+  if (handle != nullptr) {
+    ReleaseHandle(handle);
   }
   return s;
 }

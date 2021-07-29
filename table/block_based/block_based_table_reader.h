@@ -134,7 +134,7 @@ class BlockBasedTable : public TableReader {
   Status Get_aio(const ReadOptions& readOptions, const Slice& key,
              GetContext* get_context, const SliceTransform* prefix_extractor,
              struct aiocb* aiocbList_f, bool* cache_miss, BlockHandle* bhandle,
-	     bool skip_filters = false) override;
+	     char** new_buf, bool skip_filters = false) override;
 
   Status Get_post_aio(const ReadOptions& read_options, const Slice& key,
              GetContext* get_context, struct aiocb* aiocbList_f,
@@ -249,7 +249,7 @@ class BlockBasedTable : public TableReader {
       TBlockIter* input_iter, BlockType block_type, GetContext* get_context,
       BlockCacheLookupContext* lookup_context, Status s,
       FilePrefetchBuffer* prefetch_buffer, struct aiocb* aiocbList_f,
-      bool* cache_miss) const;
+      bool* cache_miss, char** new_buf) const;
 
   template <typename TBlockIter>
   TBlockIter* NewDataBlockIterator_post_aio(
@@ -328,7 +328,7 @@ class BlockBasedTable : public TableReader {
       const BlockHandle& handle, const UncompressionDict& uncompression_dict,
       CachableEntry<TBlocklike>* block_entry, BlockType block_type,
       GetContext* get_context, BlockContents* contents,
-      struct aiocb* aiocbList_f, bool* cache_miss) const;
+      struct aiocb* aiocbList_f, bool* cache_miss, char** new_buf) const;
 
   template <typename TBlocklike>
   Status MaybeReadBlockAndLoadToCache_post_aio(
@@ -356,7 +356,7 @@ class BlockBasedTable : public TableReader {
       const BlockHandle& handle, const UncompressionDict& uncompression_dict,
       CachableEntry<TBlocklike>* block_entry, BlockType block_type,
       GetContext* get_context, bool use_cache, struct aiocb* aiocbList_f,
-      bool* cache_miss) const;
+      bool* cache_miss, char** new_buf) const;
 
   template <typename TBlocklike>
   Status RetrieveBlock_post_aio(

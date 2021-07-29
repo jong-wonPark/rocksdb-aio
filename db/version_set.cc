@@ -19,6 +19,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <sys/stat.h>
 
 #include "compaction/compaction.h"
 #include "db/blob/blob_file_cache.h"
@@ -2084,6 +2085,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   // struct for aio
   struct aiocb aiocbList;
   bool cache_miss = true;
+  //int cur_tid = gettid();
 
   while (f != nullptr) {
 
@@ -2102,9 +2104,11 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
     StopWatchNano timer(clock_, timer_enabled /* auto_start */);
     
     BlockHandle bhandle;
+    char* new_buf = nullptr;
     *status = table_cache_->Get_aio(
         read_options, *internal_comparator(), *f->file_metadata, ikey,
-        &get_context, &aiocbList, &cache_miss, &bhandle, mutable_cf_options_.prefix_extractor.get(),
+        &get_context, &aiocbList, &cache_miss, &bhandle, &new_buf,
+	mutable_cf_options_.prefix_extractor.get(),
         cfd_->internal_stats()->GetFileReadHist(fp.GetHitFileLevel()),
         IsFilterSkipped(static_cast<int>(fp.GetHitFileLevel()),
                         fp.IsHitFileLastInLevel()),
@@ -2114,27 +2118,33 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
       if (!status->ok()) {
         return;
       }
+      int status_aio = 0;
       while(1){
         int tmp2 = 0;
         for (int tmp1 = 0; tmp1 < 200; tmp1++)
           tmp2++;
-        int status_aio = aio_error(&aiocbList);
+        status_aio = aio_error(&aiocbList);
         switch (status_aio) {
           case 0:
+          //printf("%d,success,%d\n",cur_tid,aiocbList.aio_fildes);
           break;
           case EINPROGRESS:
-          //printf("In progress\n");
+          //printf("%d,In progress,%d,%d\n",cur_tid,aiocbList.aio_fildes,status_aio);
+	  //printf("%d,inprogress,%d,%ld,%p,%ld,%d\n",cur_tid,aiocbList.aio_fildes,aiocbList.aio_offset,(void*)&(aiocbList.aio_buf),aiocbList.aio_nbytes,aiocbList.aio_reqprio);
           break;
           case ECANCELED:
           printf("Canceled\n");
           break;
           default:
-          perror("aio_error");
+	  //printf("%d,error,%d,%ld,%p,%ld,%d\n",cur_tid,aiocbList.aio_fildes,aiocbList.aio_offset,(void*)&(aiocbList.aio_buf),aiocbList.aio_nbytes,aiocbList.aio_reqprio);
+	  //printf("%d,error,%d,%lu,%d,%d\n",cur_tid,aiocbList.aio_fildes,sb.st_ino,status_aio,errno);
+          //perror("aio_error");
           break;
         }
         if (status_aio != EINPROGRESS)
           break;
       }
+      if (status_aio == 0){
       *status = table_cache_->Get_post_aio(
 		      read_options, *internal_comparator(), *f->file_metadata, ikey,
                       &get_context, &aiocbList, &bhandle,
@@ -2143,7 +2153,11 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                       IsFilterSkipped(static_cast<int>(fp.GetHitFileLevel()),
                       fp.IsHitFileLastInLevel()),
                       fp.GetHitFileLevel(), max_file_size_for_l0_meta_pin_);
+      } else {
+        printf("aio_error\n");
+      }
     }
+    delete[] new_buf;
 
     // TODO: examine the behavior for corrupted key
     if (timer_enabled) {

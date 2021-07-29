@@ -219,9 +219,11 @@ PosixSequentialFile::PosixSequentialFile(const std::string& fname, FILE* file,
 PosixSequentialFile::~PosixSequentialFile() {
   if (!use_direct_io()) {
     assert(file_);
+    //printf("%d,closefd-~PSF1,%d\n",gettid(),file_->_fileno);
     fclose(file_);
   } else {
     assert(fd_);
+    //printf("%d,closefd-~PSF2,%d\n",gettid(),fd_);
     close(fd_);
   }
 }
@@ -456,10 +458,12 @@ Status PosixHelper::GetLogicalBlockSizeOfDirectory(const std::string& directory,
                                                    size_t* size) {
   int fd = open(directory.c_str(), O_DIRECTORY | O_RDONLY);
   if (fd == -1) {
+	  printf("closefd-GLBSOD1,%d\n",fd);
     close(fd);
     return Status::IOError("Cannot open directory " + directory);
   }
   *size = PosixHelper::GetLogicalBlockSizeOfFd(fd);
+printf("closefd-GLBSOD2,%d\n",fd);
   close(fd);
   return Status::OK();
 }
@@ -524,6 +528,7 @@ size_t PosixHelper::GetLogicalBlockSizeOfFd(int fd) {
       sscanf(line, "%zu", &size);
     }
     free(line);
+    printf("closefd-GLBS1,%d\n",fp->_fileno);
     fclose(fp);
   }
   if (size != 0 && (size & (size - 1)) == 0) {
@@ -560,7 +565,7 @@ PosixRandomAccessFile::PosixRandomAccessFile(
   assert(!options.use_mmap_reads || sizeof(void*) < 8);
 }
 
-PosixRandomAccessFile::~PosixRandomAccessFile() { close(fd_); }
+PosixRandomAccessFile::~PosixRandomAccessFile() { /*printf("%d,close,%d\n",gettid(),fd_);*/close(fd_); }
 
 
 IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
@@ -576,15 +581,21 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
   ssize_t r = -1;
   size_t left = n;
   char* ptr = scratch;
+/*
+  struct aiocb aiocbList;
+  aiocbList.aio_fildes = fd_;
 
-  //struct aiocb aiocbList;
-  //aiocbList.aio_fildes = fd_;
-
+  size_t new_capacity = ((n + 512 - 1)/512)*512;
+  char* new_buf = new char[new_capacity + 512];
+  char* new_bufstart = reinterpret_cast<char*>(
+      (reinterpret_cast<uintptr_t>(new_buf) + (512 - 1)) &
+      ~static_cast<uintptr_t>(512 - 1));
+      */
   while (left > 0) {
     r = pread(fd_, ptr, left, static_cast<off_t>(offset));
     ///////////////
-    /*
-    aiocbList.aio_buf = ptr;
+    
+/*    aiocbList.aio_buf = new_bufstart;
     aiocbList.aio_nbytes = n;
     aiocbList.aio_offset = offset;
     aiocbList.aio_reqprio = 0;
@@ -615,6 +626,7 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
 		//printf("Canceled\n");
 		break;
 		default:
+		//printf("errno,%d\n",status);
 		perror("aio_error");
 		break;
 	}
@@ -622,11 +634,12 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
 	      break;
     }
     r = aio_return(&aiocbList);
-    printf("count1:%d,%ld\n",count1,r);
-    */
+*/    //printf("count1:%d,%ld\n",count1,r);
+    
 	    ///////////////////////
     if (r <= 0) {
       if (r == -1 && errno == EINTR) {
+	      printf("EINTR,%d\n",errno);
         continue;
       }
       break;
@@ -642,6 +655,9 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
     }
   }
 
+  //scratch = (char*)aiocbList.aio_buf;
+  //memcpy(scratch,(const char*)aiocbList.aio_buf,n);
+
   if (r < 0) {
     // An error: return a non-ok status
     s = IOError(
@@ -649,6 +665,7 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
         filename_, errno);
   }
   *result = Slice(scratch, (r < 0) ? 0 : n - left);
+  //delete[] new_buf;
   return s;
 }
 
@@ -667,11 +684,14 @@ IOStatus PosixRandomAccessFile::Read_aio(size_t n,
   while (left > 0) {
     r = aio_read(aiocbList_f);
 
-    if (r < 0) {
+    if (r <= 0) {
       if (r == -1 && errno == EINTR) {
         continue;
       }
-      break;
+      if (r == 0)
+        break;
+      else
+        printf("errno:%d\n",errno);
     }
     if (use_direct_io() &&
         r % static_cast<ssize_t>(GetRequiredBufferAlignment()) != 0) {
@@ -729,8 +749,8 @@ IOStatus PosixRandomAccessFile::Read_post_aio(size_t n,
   }
   size_t left = n - r;
 
-  scratch = (char*)aiocbList_f->aio_buf;
-
+  memcpy(scratch,(const char*)aiocbList_f->aio_buf,n);
+  
   if (r < 0) {
     // An error: return a non-ok status
     s = IOError(
@@ -986,6 +1006,7 @@ PosixMmapReadableFile::~PosixMmapReadableFile() {
     fprintf(stdout, "failed to munmap %p length %" ROCKSDB_PRIszt " \n",
             mmapped_region_, length_);
   }
+  printf("closefd-~PMRF1,%d\n",fd_);
   close(fd_);
 }
 
@@ -1177,7 +1198,7 @@ IOStatus PosixMmapFile::Close(const IOOptions& /*opts*/,
       s = IOError("While ftruncating mmaped file", filename_, errno);
     }
   }
-
+printf("closefd-PMC1,%d\n",fd_);
   if (close(fd_) < 0) {
     if (s.ok()) {
       s = IOError("While closing mmapped file", filename_, errno);
@@ -1393,7 +1414,7 @@ IOStatus PosixWritableFile::Close(const IOOptions& /*opts*/,
     }
 #endif
   }
-
+//printf("%d,closefd-PWFC1,%d\n",gettid(),fd_);
   if (close(fd_) < 0) {
     s = IOError("While closing file after writing", filename_, errno);
   }
@@ -1608,6 +1629,7 @@ IOStatus PosixRandomRWFile::Fsync(const IOOptions& /*opts*/,
 
 IOStatus PosixRandomRWFile::Close(const IOOptions& /*opts*/,
                                   IODebugContext* /*dbg*/) {
+	printf("closefd-PRFC1,%d\n",fd_);
   if (close(fd_) < 0) {
     return IOError("While close random read/write file", filename_, errno);
   }
@@ -1624,7 +1646,7 @@ PosixMemoryMappedFileBuffer::~PosixMemoryMappedFileBuffer() {
  * PosixDirectory
  */
 
-PosixDirectory::~PosixDirectory() { close(fd_); }
+PosixDirectory::~PosixDirectory() { printf("closefd-~PD1,%d\n",fd_);close(fd_); }
 
 IOStatus PosixDirectory::Fsync(const IOOptions& /*opts*/,
                                IODebugContext* /*dbg*/) {
