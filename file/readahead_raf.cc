@@ -79,8 +79,7 @@ class ReadaheadRandomAccessFile : public FSRandomAccessFile {
     return IOStatus::OK();
   }
   IOStatus Read_post_aio(size_t , const IOOptions& ,
-                        Slice* , char* ,
-                        IODebugContext* , struct aiocb* ) const override{
+                        Slice* , IODebugContext* , struct aiocb* ) const override{
     return IOStatus::OK();
   }
 

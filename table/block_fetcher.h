@@ -68,8 +68,8 @@ class BlockFetcher {
         for_compaction_(for_compaction) {}
 
   IOStatus ReadBlockContents();
-  IOStatus ReadBlockContents_aio(struct aiocb* aiocbList_f);
-  IOStatus ReadBlockContents_post_aio(struct aiocb* aiocbList_f);
+  IOStatus ReadBlockContents_aio(struct aiocb* aiocbList_f, AlignedBuffer* buff);
+  IOStatus ReadBlockContents_post_aio(struct aiocb* aiocbList_f, AlignedBuffer* buff);
   CompressionType get_compression_type() const { return compression_type_; }
 
 #ifndef NDEBUG

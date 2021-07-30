@@ -203,8 +203,8 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
   return io_s;
 }
 
-IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset,
-                                      size_t n, struct aiocb* aiocbList_f) const {
+IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset, size_t n,
+		struct aiocb* aiocbList_f, AlignedBuffer* buff) const {
   TEST_SYNC_POINT_CALLBACK("RandomAccessFileReader::Read", nullptr);
   IOStatus io_s;
   {
@@ -232,7 +232,9 @@ IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset
       assert(!opts.timeout.count() || allowed == read_size);
 
       // aio structure initialize
-      aiocbList_f->aio_buf = malloc(read_size);
+      buff->Alignment(alignment);
+      buff->AllocateNewBuffer(read_size);
+      aiocbList_f->aio_buf = buff->Destination();
       aiocbList_f->aio_nbytes = read_size;
       aiocbList_f->aio_reqprio = 0;
       aiocbList_f->aio_offset = aligned_offset;
@@ -249,8 +251,8 @@ IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset
 
 IOStatus RandomAccessFileReader::Read_post_aio(const IOOptions& opts, uint64_t offset,
                                       size_t n, Slice* result, char* scratch,
-                                      AlignedBuf* aligned_buf,
-                                      struct aiocb* aiocbList_f) const {
+                                      AlignedBuf* aligned_buf, struct aiocb* aiocbList_f,
+				      AlignedBuffer* buff) const {
   (void)aligned_buf;
 
   TEST_SYNC_POINT_CALLBACK("RandomAccessFileReader::Read", nullptr);
@@ -269,12 +271,12 @@ IOStatus RandomAccessFileReader::Read_post_aio(const IOOptions& opts, uint64_t o
     size_t offset_advance = static_cast<size_t>(offset) - aligned_offset;
     size_t read_size =
         Roundup(static_cast<size_t>(offset + n), alignment) - aligned_offset;
-    AlignedBuffer buf;
-    buf.Alignment(alignment);
-    buf.AllocateNewBuffer(read_size);
+    //AlignedBuffer buf;
+    //buf.Alignment(alignment);
+    //buf.AllocateNewBuffer(read_size);
 
     size_t allowed;
-    assert(buf.CurrentSize() == 0);
+    //assert(buf.CurrentSize() == 0);
     allowed = read_size;
     Slice tmp;
 
@@ -282,7 +284,7 @@ IOStatus RandomAccessFileReader::Read_post_aio(const IOOptions& opts, uint64_t o
     uint64_t orig_offset = 0;
     if (ShouldNotifyListeners()) {
       start_ts = FileOperationInfo::StartNow();
-      orig_offset = aligned_offset + buf.CurrentSize();
+      orig_offset = aligned_offset + buff->CurrentSize();
     }
 
     {
@@ -293,7 +295,7 @@ IOStatus RandomAccessFileReader::Read_post_aio(const IOOptions& opts, uint64_t o
       // the opts.timeout before calling file_->Read
       assert(!opts.timeout.count() || allowed == read_size);
       io_s = file_->Read_post_aio(allowed, opts,
-                         &tmp, buf.Destination(), nullptr, aiocbList_f);
+                         &tmp, nullptr, aiocbList_f);
     }
     if (ShouldNotifyListeners()) {
       auto finish_ts = FileOperationInfo::FinishNow();
@@ -301,19 +303,19 @@ IOStatus RandomAccessFileReader::Read_post_aio(const IOOptions& opts, uint64_t o
                              io_s);
     }
 
-    buf.Size(buf.CurrentSize() + tmp.size());
+    buff->Size(buff->CurrentSize() + tmp.size());
     if (!io_s.ok() || tmp.size() < allowed) {
       return io_s;
     }
 
     size_t res_len = 0;
-    if (io_s.ok() && offset_advance < buf.CurrentSize()) {
-      res_len = std::min(buf.CurrentSize() - offset_advance, n);
+    if (io_s.ok() && offset_advance < buff->CurrentSize()) {
+      res_len = std::min(buff->CurrentSize() - offset_advance, n);
       if (aligned_buf == nullptr) {
-        buf.Read(scratch, offset_advance, res_len);
+        buff->Read(scratch, offset_advance, res_len);
       } else {
-        scratch = buf.BufferStart() + offset_advance;
-        aligned_buf->reset(buf.Release());
+        scratch = buff->BufferStart() + offset_advance;
+        aligned_buf->reset(buff->Release());
       }
     }
     *result = Slice(scratch, res_len);

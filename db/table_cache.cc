@@ -484,9 +484,9 @@ Status TableCache::Get(const ReadOptions& options,
 
 Status TableCache::Get_aio(const ReadOptions& options,
                        const InternalKeyComparator& internal_comparator,
-                       const FileMetaData& file_meta, const Slice& k,
-                       GetContext* get_context, struct aiocb* aiocbList_f, bool* cache_miss,
-                       BlockHandle *bhandle, const SliceTransform* prefix_extractor,
+                       const FileMetaData& file_meta, const Slice& k, GetContext* get_context,
+		       struct aiocb* aiocbList_f, bool* cache_miss, BlockHandle *bhandle,
+		       AlignedBuffer* buff, const SliceTransform* prefix_extractor,
                        HistogramImpl* file_read_hist, bool skip_filters,
                        int level, size_t max_file_size_for_l0_meta_pin) {
   auto& fd = file_meta.fd;
@@ -543,7 +543,7 @@ Status TableCache::Get_aio(const ReadOptions& options,
       get_context->SetReplayLog(row_cache_entry);  // nullptr if no cache.
 //printf("table_cache start\n");
       s = t->Get_aio(options, k, get_context, prefix_extractor, aiocbList_f,
-		      cache_miss, bhandle, skip_filters);
+		      cache_miss, bhandle, buff, skip_filters);
 //printf("table_cache end\n");
       get_context->SetReplayLog(nullptr);
     } else if (options.read_tier == kBlockCacheTier && s.IsIncomplete()) {
@@ -560,8 +560,8 @@ Status TableCache::Get_aio(const ReadOptions& options,
 Status TableCache::Get_post_aio(const ReadOptions& options,
                        const InternalKeyComparator& internal_comparator,
                        const FileMetaData& file_meta, const Slice& k,
-                       GetContext* get_context, struct aiocb* aiocbList_f,
-                       BlockHandle* bhandle, const SliceTransform* prefix_extractor,
+                       GetContext* get_context, struct aiocb* aiocbList_f, BlockHandle* bhandle,
+		       AlignedBuffer* buff, const SliceTransform* prefix_extractor,
                        HistogramImpl* file_read_hist, bool skip_filters,
                        int level, size_t max_file_size_for_l0_meta_pin) {
   auto& fd = file_meta.fd;
@@ -596,7 +596,7 @@ Status TableCache::Get_post_aio(const ReadOptions& options,
     ReleaseHandle(handle);
   }
   if (s.ok()) {
-    s = t->Get_post_aio(options, k, get_context, aiocbList_f, bhandle);
+    s = t->Get_post_aio(options, k, get_context, aiocbList_f, bhandle, buff);
   }
   return s;
 }

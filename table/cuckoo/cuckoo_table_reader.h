@@ -48,13 +48,13 @@ class CuckooTableReader: public TableReader {
   Status Get_aio(const ReadOptions& , const Slice& ,
              GetContext* , const SliceTransform* ,
              struct aiocb* , bool* , BlockHandle* ,
-             bool ) override {
+             AlignedBuffer* ,bool ) override {
     return Status::OK();
   }
 
   Status Get_post_aio(const ReadOptions& , const Slice& ,
              GetContext* , struct aiocb* ,
-             BlockHandle* ) override {
+             BlockHandle* , AlignedBuffer*) override {
     return Status::OK();
   }
 

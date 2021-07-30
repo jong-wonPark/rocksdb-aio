@@ -1,10 +1,9 @@
 #!/bin/sh
 
-#SET=$(seq 0 1)
-for thread_num in 2 4 8 12 16
-do
-#	for iter in $SET
-#	do
-		./db_bench --benchmarks="fillrandom" --threads=$thread_num --key_size=10 --value_size=1000 --cache_index_and_filter_blocks --cache_size=104857600 --db=/home/mldb01/work/db_log --num=10000000 -max_background_compactions=6 -max_background_flushes=6 -max_write_buffer_number=6 -subcompactions=6 -level0_file_num_compaction_trigger=4
-	done
-#done
+scp -P 4338 db/version_set.cc ubuntu2@115.145.211.190:~/rocksdb/log/frommldb01
+scp -P 4338 db/table_cache.cc ubuntu2@115.145.211.190:~/rocksdb/log/frommldb01
+scp -P 4338 table/block_based/block_based_table_reader.cc ubuntu2@115.145.211.190:~/rocksdb/log/frommldb01
+scp -P 4338 table/block_based/block_based_table_reader_impl.h ubuntu2@115.145.211.190:~/rocksdb/log/frommldb01
+scp -P 4338 table/block_fetcher.cc ubuntu2@115.145.211.190:~/rocksdb/log/frommldb01
+scp -P 4338 file/random_access_file_reader.cc ubuntu2@115.145.211.190:~/rocksdb/log/frommldb01
+scp -P 4338 env/io_posix.cc ubuntu2@115.145.211.190:~/rocksdb/log/frommldb01

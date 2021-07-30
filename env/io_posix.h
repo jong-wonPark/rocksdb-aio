@@ -198,7 +198,7 @@ class PosixRandomAccessFile : public FSRandomAccessFile {
   virtual IOStatus Read_aio(size_t n, const IOOptions& /*opts*/,
 		  IODebugContext* /*dbg*/, struct aiocb* aiocbList_f) const;
   virtual IOStatus Read_post_aio(size_t n, const IOOptions& /*opts*/, Slice* result,
-		  char* scratch, IODebugContext* /*dbg*/,struct aiocb* aiocbList_f) const;
+		  IODebugContext* /*dbg*/,struct aiocb* aiocbList_f) const;
 
   virtual IOStatus MultiRead(FSReadRequest* reqs, size_t num_reqs,
                              const IOOptions& options,
@@ -307,8 +307,7 @@ class PosixMmapReadableFile : public FSRandomAccessFile {
     return IOStatus::OK();
   }
   IOStatus Read_post_aio(size_t , const IOOptions& ,
-                        Slice* , char* ,
-                        IODebugContext* , struct aiocb* ) const override{
+                        Slice* , IODebugContext* , struct aiocb* ) const override{
     return IOStatus::OK();
   }
   virtual IOStatus InvalidateCache(size_t offset, size_t length) override;

@@ -2543,7 +2543,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
 Status BlockBasedTable::Get_aio(const ReadOptions& read_options, const Slice& key,
                             GetContext* get_context, const SliceTransform* prefix_extractor,
                             struct aiocb* aiocbList_f, bool* cache_miss, BlockHandle* bhandle,
-			    bool skip_filters) {
+			    AlignedBuffer* buff, bool skip_filters) {
   assert(key.size() >= 8);  // key must be internal key
   assert(get_context != nullptr);
 
@@ -2635,7 +2635,7 @@ Status BlockBasedTable::Get_aio(const ReadOptions& read_options, const Slice& ke
           read_options, v.handle, &biter, BlockType::kData, get_context,
           &lookup_data_block_context,
           /*s=*/Status(), /*prefetch_buffer*/ nullptr,
-          aiocbList_f, cache_miss);
+          aiocbList_f, cache_miss, buff);
       //printf("BBTR get_aio end\n");
       if (*cache_miss){
         bhandle->set_offset(v.handle.offset());
@@ -2702,7 +2702,7 @@ Status BlockBasedTable::Get_aio(const ReadOptions& read_options, const Slice& ke
 
 Status BlockBasedTable::Get_post_aio(const ReadOptions& read_options, const Slice& key,
                             GetContext* get_context, struct aiocb* aiocbList_f,
-			    BlockHandle* bhandle) {
+			    BlockHandle* bhandle, AlignedBuffer* buff) {
   assert(key.size() >= 8);  // key must be internal key
   assert(get_context != nullptr);
 
@@ -2725,7 +2725,7 @@ Status BlockBasedTable::Get_post_aio(const ReadOptions& read_options, const Slic
   NewDataBlockIterator_post_aio<DataBlockIter>(
       read_options, *bhandle/*v.handle*/, &biter, BlockType::kData, get_context,
       &lookup_data_block_context,
-      /*s=*/Status(), /*prefetch_buffer*/ nullptr, aiocbList_f);
+      /*s=*/Status(), /*prefetch_buffer*/ nullptr, aiocbList_f, buff);
 
   if (!biter.status().ok()) {
     s = biter.status();
@@ -2763,7 +2763,7 @@ Status BlockBasedTable::RetrieveBlock_aio(
     const BlockHandle& handle, const UncompressionDict& uncompression_dict,
     CachableEntry<TBlocklike>* block_entry, BlockType block_type,
     GetContext* get_context, bool use_cache, struct aiocb* aiocbList_f,
-    bool* cache_miss) const {
+    bool* cache_miss, AlignedBuffer* buff) const {
   assert(block_entry);
   assert(block_entry->IsEmpty());
 
@@ -2773,7 +2773,7 @@ Status BlockBasedTable::RetrieveBlock_aio(
     s = MaybeReadBlockAndLoadToCache_aio(prefetch_buffer, ro, handle,
                                      uncompression_dict, block_entry,
                                      block_type, get_context, /*contents=*/nullptr,
-				     aiocbList_f, cache_miss);
+				     aiocbList_f, cache_miss, buff);
 //printf("Retrieve end\n");
     if (!s.ok()) {
       return s;
@@ -2793,7 +2793,7 @@ Status BlockBasedTable::RetrieveBlock_post_aio(
     const BlockHandle& handle, const UncompressionDict& uncompression_dict,
     CachableEntry<TBlocklike>* block_entry, BlockType block_type,
     GetContext* get_context, bool use_cache,
-    struct aiocb* aiocbList_f) const {
+    struct aiocb* aiocbList_f, AlignedBuffer* buff) const {
   assert(block_entry);
   assert(block_entry->IsEmpty());
 
@@ -2802,7 +2802,7 @@ Status BlockBasedTable::RetrieveBlock_post_aio(
     s = MaybeReadBlockAndLoadToCache_post_aio(prefetch_buffer, ro, handle,
                                      uncompression_dict, block_entry,
                                      block_type, get_context,
-                                     /*contents=*/nullptr, aiocbList_f);
+                                     /*contents=*/nullptr, aiocbList_f, buff);
 
     if (!s.ok()) {
       return s;
@@ -2822,7 +2822,7 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache_aio(
     const BlockHandle& handle, const UncompressionDict& uncompression_dict,
     CachableEntry<TBlocklike>* block_entry, BlockType block_type,
     GetContext* get_context, BlockContents* contents,
-    struct aiocb* aiocbList_f, bool* cache_miss) const {
+    struct aiocb* aiocbList_f, bool* cache_miss, AlignedBuffer* buff) const {
   assert(block_entry != nullptr);
   const bool no_io = (ro.read_tier == kBlockCacheTier);
   Cache* block_cache = rep_->table_options.block_cache.get();
@@ -2858,6 +2858,7 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache_aio(
         // TODO(haoyu): Differentiate cache hit on uncompressed block cache and
         // compressed block cache.
         is_cache_hit = true;
+	*cache_miss = false;
       }
     }
 
@@ -2882,7 +2883,7 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache_aio(
             GetMemoryAllocator(rep_->table_options),
             GetMemoryAllocatorForCompressedBlock(rep_->table_options));
 	//printf("Mayberead start\n");
-        s = block_fetcher.ReadBlockContents_aio(aiocbList_f);
+        s = block_fetcher.ReadBlockContents_aio(aiocbList_f, buff);
 	//printf("Mayberead end\n");
         *cache_miss = !is_cache_hit;
         return s;
@@ -2929,7 +2930,7 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache_post_aio(
     const BlockHandle& handle, const UncompressionDict& uncompression_dict,
     CachableEntry<TBlocklike>* block_entry, BlockType block_type,
     GetContext* get_context, BlockContents* contents,
-    struct aiocb* aiocbList_f) const {
+    struct aiocb* aiocbList_f, AlignedBuffer* buff) const {
   assert(block_entry != nullptr);
   Cache* block_cache = rep_->table_options.block_cache.get();
   Cache* block_cache_compressed =
@@ -2975,7 +2976,7 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache_post_aio(
           rep_->persistent_cache_options,
           GetMemoryAllocator(rep_->table_options),
           GetMemoryAllocatorForCompressedBlock(rep_->table_options));
-      s = block_fetcher.ReadBlockContents_post_aio(aiocbList_f);
+      s = block_fetcher.ReadBlockContents_post_aio(aiocbList_f, buff);
       raw_block_comp_type = block_fetcher.get_compression_type();
       contents = &raw_block_contents;
       if (get_context) {

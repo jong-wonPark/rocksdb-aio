@@ -2049,7 +2049,8 @@ void Monitor_aio(struct aiocb* aiocbList_f) {
       printf("Canceled\n");
       break;
       default:
-      perror("aio_error");
+      printf("%d,monitor-error,%d\n",gettid(),status_aio);
+      //perror("aio_error");
       break;
     }
     if (status_aio != EINPROGRESS)
@@ -2109,13 +2110,13 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   // struct for aio
   //int access_ratio = storage_info_.get_access_ratio();
   int max_access_file = storage_info_.num_levels() + storage_info_.NumLevelFiles(0);
-  printf("maxaccessfile:%d\n",max_access_file);
   int io_file_cur = 0, io_file_end = 0;
   //int num_access_file = 0, num_find_file = -1, predict_access_file = access_ratio * max_access_file / 100;
   // io_file_cur/end is same that means there is no I/O inprogress
   unsigned long long time_list[max_access_file][2] = {0,};
-  struct aiocb aiocbList;
-  BlockHandle bhandle;
+  struct aiocb aiocbList[max_access_file];
+  BlockHandle bhandle[max_access_file];
+  AlignedBuffer buff[max_access_file];
   struct FdWithKeyRange_List {
     FdWithKeyRange_List() {
       f_oldest = nullptr;
@@ -2140,7 +2141,6 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   int cur_tid = gettid();
   asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
   while_start = ((unsigned long long)hi << 32) | lo;
-  printf("%d,start read sst\n",cur_tid);
   while (f != nullptr) {
     if (*max_covering_tombstone_seq > 0) {
       // The remaining files we look at will only contain covered keys, so we
@@ -2158,12 +2158,12 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 
     level = fp.GetHitFileLevel();
     last_in_level = fp.IsHitFileLastInLevel();
-    printf("%d,get_aiostart,%llu\n",cur_tid,cur_total_sec);
+    printf("%d,get_aiostart,%d\n", cur_tid, io_file_cur);
     asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
     *status = table_cache_->Get_aio(
         read_options, *internal_comparator(), *f->file_metadata, ikey,
-        &get_context, &aiocbList, &cache_miss, &bhandle,
-        mutable_cf_options_.prefix_extractor.get(),
+        &get_context, &aiocbList[io_file_cur], &cache_miss, &bhandle[io_file_cur],
+        &buff[io_file_cur], mutable_cf_options_.prefix_extractor.get(),
         cfd_->internal_stats()->GetFileReadHist(level),
         IsFilterSkipped(static_cast<int>(level),
                         last_in_level),
@@ -2188,11 +2188,9 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
         predict_iofinish_sec -= pre_micro_sec;
       }
       io_file_cur += 1;
-      Monitor_aio(&aiocbList);
-      goto post_aio;
 
       if(io_file_cur != io_file_end) {
-        status_aio = aio_error(&aiocbList);
+        status_aio = aio_error(&aiocbList[io_file_end]);
         switch (status_aio) {
           case 0:{
   post_aio:
@@ -2202,9 +2200,9 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             last_in_level = fmetadata_list[io_file_end].last_in_level;
             asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
             *status = table_cache_->Get_post_aio(
-                read_options, *internal_comparator(), *f->file_metadata, ikey,
-                            &get_context, &aiocbList, &bhandle,
-                mutable_cf_options_.prefix_extractor.get(),
+                            read_options, *internal_comparator(), *f->file_metadata, ikey,
+                            &get_context, &aiocbList[io_file_end], &bhandle[io_file_end],
+                            &buff[io_file_end], mutable_cf_options_.prefix_extractor.get(),
                             cfd_->internal_stats()->GetFileReadHist(level),
                             IsFilterSkipped(static_cast<int>(level),
                             last_in_level),
@@ -2221,11 +2219,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             break;
           }
           case EINPROGRESS:{
-            printf("%d,%d,%ld,%ld\n",cur_tid,aiocbList.aio_fildes,aiocbList.aio_offset,aiocbList.aio_nbytes);
             if (predict_iofinish_sec < cur_total_sec + pre_avg_sec) {
               // go to monitoring and go to post process
 	      printf("%d,monitor-notime-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
-              Monitor_aio(&aiocbList);
+              Monitor_aio(&aiocbList[io_file_end]);
 	      printf("%d,monitor-notime-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
               asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
               oper_end = ((unsigned long long)hi2 << 32) | lo2;
@@ -2237,16 +2234,12 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             }
             break;
           }
-          case ECANCELED:{
-	  printf("%d,ECANCELED,%d\n",cur_tid,io_file_end);
+          case ECANCELED:
           break;
-	  }
-          default:{
-	  printf("%d,default,%d,%d\n",cur_tid,status_aio,io_file_end);
-	  printf("%d,%d,%ld,%ld\n",cur_tid,aiocbList.aio_fildes,aiocbList.aio_offset,aiocbList.aio_nbytes);
-          perror("aio_error");
+          default:
+	  printf("%d,aio_error,%d,%d\n", cur_tid, status_aio, io_file_end);
+          //perror("aio_error");
           break;
-	  }
         }
       }
 
@@ -2272,11 +2265,12 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
     }
     switch (get_context.State()) {
       case GetContext::kNotFound:{
+        printf("%d,notfound\n",cur_tid);
         if (already_found) {
           if(io_file_cur != io_file_end) {
             // go to monitoring and go to post process
 	    printf("%d,monitor-already-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
-            Monitor_aio(&aiocbList);
+            Monitor_aio(&aiocbList[io_file_end]);
 	    printf("%d,monitor-already-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
             asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
             oper_end = ((unsigned long long)hi2 << 32) | lo2;
@@ -2289,40 +2283,16 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             }
             storage_info_.set_pre_avg_micro_time(pre_total_sec / io_file_cur);
             storage_info_.set_io_avg_micro_time(io_total_sec / io_file_cur);
-	    printf("%d,sst read end,alreadyfound\n",cur_tid);
+	    printf("%d,aioend1\n",cur_tid);
             return;
           }
         }
-        /*  int cancel_status;
-          while (1) {
-            cancel_status = aio_cancel(aiocbList[io_file_cur].aio_fildes, &aiocbList[io_file_cur]);
-            if (cancel_status == AIO_CANCELED || cancel_status == AIO_ALLDONE){
-              io_file_cur -= 1;
-            } else if (cancel_status == AIO_NOTCANCELED) {
-              break;
-            } else if (cancel_status == -1){
-              perror("aio_cancel");
-            }
-          }
-          while(io_file_cur != io_file_end) {
-            printf("%d,monitor-1by1-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
-            Monitor_aio(&aiocbList[io_file_end]);
-	    printf("%d,monitor-1by1-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
-            io_file_end += 1;
-          }
-          for (int iter_io_count = 0;iter_io_count<io_file_cur;iter_io_count++){
-            io_total_sec += (time_list[iter_io_count][1] - time_list[iter_io_count][0]);
-          }
-          storage_info_.set_pre_avg_micro_time(pre_total_sec / io_file_cur);
-          storage_info_.set_io_avg_micro_time(io_total_sec / io_file_cur);
-          return;
-        }*/
         // Keep searching in other files
         if(io_file_cur != io_file_end) {
           if (predict_iofinish_sec < cur_total_sec + pre_avg_sec) {
             // go to monitoring and go to post process
 	    printf("%d,monitor-notime2-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
-            Monitor_aio(&aiocbList);
+            Monitor_aio(&aiocbList[io_file_end]);
 	    printf("%d,monitor-notime2-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
             asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
             oper_end = ((unsigned long long)hi2 << 32) | lo2;
@@ -2339,6 +2309,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
         // TODO: update per-level perfcontext user_key_return_count for kMerge
         break;
       case GetContext::kFound:{
+        printf("%d,found\n",cur_tid);
         if (already_found) {
           cache_miss = true;
         }
@@ -2372,7 +2343,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             // need to wait io files to check that recent value exist.
             // but no more need to search on next file
 	    printf("%d,monitor-hitfound-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
-            Monitor_aio(&aiocbList);
+            Monitor_aio(&aiocbList[io_file_end]);
 	    printf("%d,monitor-hitfound-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
             asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
             oper_end = ((unsigned long long)hi2 << 32) | lo2;
@@ -2383,19 +2354,22 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
           }
           else {
             int cancel_status;
-            while (1) {
-              cancel_status = aio_cancel(aiocbList.aio_fildes, &aiocbList);
+            while (io_file_cur > io_file_end) {
+              cancel_status = aio_cancel(aiocbList[io_file_cur-1].aio_fildes, &aiocbList[io_file_cur-1]);
               if (cancel_status == AIO_CANCELED || cancel_status == AIO_ALLDONE){
                 io_file_cur -= 1;
+		printf("%d,canceled-alldone,%d\n",cur_tid,io_file_cur);
               } else if (cancel_status == AIO_NOTCANCELED) {
+		printf("%d,notcanceled,%d\n",cur_tid,(io_file_cur-1));
                 break;
               } else if (cancel_status == -1){
-                perror("aio_cancel");
+		printf("%d,cancel-error,%d,%d\n",cur_tid,errno,(io_file_cur-1));
+                //perror("aio_cancel");
               }
             }
             while(io_file_cur != io_file_end) {
               printf("%d,monitor-justwait-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
-              Monitor_aio(&aiocbList);
+              Monitor_aio(&aiocbList[io_file_end]);
 	      printf("%d,monitor-justwait-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
               io_file_end += 1;
             }
@@ -2406,8 +2380,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             storage_info_.set_io_avg_micro_time(io_total_sec / io_file_cur);
           }
         }
-	printf("%d,sst read end,sequential found\n",cur_tid);
-
+	printf("%d,aioend2\n",cur_tid);
         return;
       }
       case GetContext::kDeleted:
@@ -2427,7 +2400,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 next_file:
     if (no_more_next) {
       printf("%d,monitor-nomore2-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
-      Monitor_aio(&aiocbList);
+      Monitor_aio(&aiocbList[io_file_end]);
       printf("%d,monitor-nomore2-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
       asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
       oper_end = ((unsigned long long)hi2 << 32) | lo2;
@@ -2438,7 +2411,7 @@ next_file:
     if (f == nullptr) {
       no_more_next = true;
       printf("%d,monitor-nomore1-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
-      Monitor_aio(&aiocbList);
+      Monitor_aio(&aiocbList[io_file_end]);
       printf("%d,monitor-nomore1-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
       asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
       oper_end = ((unsigned long long)hi2 << 32) | lo2;

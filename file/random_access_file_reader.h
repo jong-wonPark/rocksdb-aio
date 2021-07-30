@@ -126,11 +126,11 @@ class RandomAccessFileReader {
                 bool for_compaction = false) const;
 
   IOStatus Read_aio(const IOOptions& opts, uint64_t offset,
-                size_t n, struct aiocb* aiocbList_f) const;
+                size_t n, struct aiocb* aiocbList_f, AlignedBuffer* buff) const;
 
   IOStatus Read_post_aio(const IOOptions& opts, uint64_t offset,
-                size_t n, Slice* result, char* scratch,
-                AlignedBuf* aligned_buf, struct aiocb* aiocbList_f) const;
+                size_t n, Slice* result, char* scratch, AlignedBuf* aligned_buf,
+		struct aiocb* aiocbList_f, AlignedBuffer* buff) const;
 
   // REQUIRES:
   // num_reqs > 0, reqs do not overlap, and offsets in reqs are increasing.
