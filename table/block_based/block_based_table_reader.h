@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <aio.h>
+#include <libaio.h>
 
 #include "db/range_tombstone_fragmenter.h"
 #include "file/filename.h"
@@ -133,11 +133,11 @@ class BlockBasedTable : public TableReader {
 
   Status Get_aio(const ReadOptions& readOptions, const Slice& key,
              GetContext* get_context, const SliceTransform* prefix_extractor,
-             struct aiocb* aiocbList_f, bool* cache_miss, BlockHandle* bhandle,
-	     AlignedBuffer* buff, bool skip_filters = false) override;
+             struct iocb* aiocbList_f, io_context_t *ioctx_, bool* cache_miss,
+	     BlockHandle* bhandle, AlignedBuffer* buff, bool skip_filters = false) override;
 
   Status Get_post_aio(const ReadOptions& read_options, const Slice& key,
-             GetContext* get_context, struct aiocb* aiocbList_f,
+             GetContext* get_context, struct iocb* aiocbList_f,
 	     BlockHandle* bhandle, AlignedBuffer* buff) override;
 
   void MultiGet(const ReadOptions& readOptions,
@@ -248,7 +248,7 @@ class BlockBasedTable : public TableReader {
       const ReadOptions& ro, const BlockHandle& block_handle,
       TBlockIter* input_iter, BlockType block_type, GetContext* get_context,
       BlockCacheLookupContext* lookup_context, Status s,
-      FilePrefetchBuffer* prefetch_buffer, struct aiocb* aiocbList_f,
+      FilePrefetchBuffer* prefetch_buffer, struct iocb* aiocbList_f, io_context_t *ioctx_,
       bool* cache_miss, AlignedBuffer* buff) const;
 
   template <typename TBlockIter>
@@ -256,7 +256,7 @@ class BlockBasedTable : public TableReader {
       const ReadOptions& ro, const BlockHandle& block_handle,
       TBlockIter* input_iter, BlockType block_type, GetContext* get_context,
       BlockCacheLookupContext* lookup_context, Status s, FilePrefetchBuffer* prefetch_buffer,
-      struct aiocb* aiocbList_f, AlignedBuffer* buff) const;
+      struct iocb* aiocbList_f, AlignedBuffer* buff) const;
 
   // input_iter: if it is not null, update this one and return it as Iterator
   template <typename TBlockIter>
@@ -327,8 +327,8 @@ class BlockBasedTable : public TableReader {
       FilePrefetchBuffer* prefetch_buffer, const ReadOptions& ro,
       const BlockHandle& handle, const UncompressionDict& uncompression_dict,
       CachableEntry<TBlocklike>* block_entry, BlockType block_type,
-      GetContext* get_context, BlockContents* contents,
-      struct aiocb* aiocbList_f, bool* cache_miss, AlignedBuffer* buff) const;
+      GetContext* get_context, BlockContents* contents, struct iocb* aiocbList_f,
+      io_context_t *ioctx_, bool* cache_miss, AlignedBuffer* buff) const;
 
   template <typename TBlocklike>
   Status MaybeReadBlockAndLoadToCache_post_aio(
@@ -336,7 +336,7 @@ class BlockBasedTable : public TableReader {
       const BlockHandle& handle, const UncompressionDict& uncompression_dict,
       CachableEntry<TBlocklike>* block_entry, BlockType block_type,
       GetContext* get_context, BlockContents* contents,
-      struct aiocb* aiocbList_f, AlignedBuffer* buff) const;
+      struct iocb* aiocbList_f, AlignedBuffer* buff) const;
 
   // Similar to the above, with one crucial difference: it will retrieve the
   // block from the file even if there are no caches configured (assuming the
@@ -355,7 +355,7 @@ class BlockBasedTable : public TableReader {
       FilePrefetchBuffer* prefetch_buffer, const ReadOptions& ro,
       const BlockHandle& handle, const UncompressionDict& uncompression_dict,
       CachableEntry<TBlocklike>* block_entry, BlockType block_type,
-      GetContext* get_context, bool use_cache, struct aiocb* aiocbList_f,
+      GetContext* get_context, bool use_cache, struct iocb* aiocbList_f, io_context_t *ioctx_,
       bool* cache_miss, AlignedBuffer* buff) const;
 
   template <typename TBlocklike>
@@ -363,7 +363,7 @@ class BlockBasedTable : public TableReader {
       FilePrefetchBuffer* prefetch_buffer, const ReadOptions& ro,
       const BlockHandle& handle, const UncompressionDict& uncompression_dict,
       CachableEntry<TBlocklike>* block_entry, BlockType block_type,
-      GetContext* get_context, bool use_cache, struct aiocb* aiocbList_f, AlignedBuffer* buff) const;
+      GetContext* get_context, bool use_cache, struct iocb* aiocbList_f, AlignedBuffer* buff) const;
 
   void RetrieveMultipleBlocks(
       const ReadOptions& options, const MultiGetRange* batch,

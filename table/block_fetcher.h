@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <aio.h>
+#include <libaio.h>
 
 #include "memory/memory_allocator.h"
 #include "table/block_based/block.h"
@@ -68,8 +68,8 @@ class BlockFetcher {
         for_compaction_(for_compaction) {}
 
   IOStatus ReadBlockContents();
-  IOStatus ReadBlockContents_aio(struct aiocb* aiocbList_f, AlignedBuffer* buff);
-  IOStatus ReadBlockContents_post_aio(struct aiocb* aiocbList_f, AlignedBuffer* buff);
+  IOStatus ReadBlockContents_aio(struct iocb* aiocbList_f, io_context_t *ioctx_, AlignedBuffer* buff);
+  IOStatus ReadBlockContents_post_aio(struct iocb* aiocbList_f, AlignedBuffer* buff);
   CompressionType get_compression_type() const { return compression_type_; }
 
 #ifndef NDEBUG

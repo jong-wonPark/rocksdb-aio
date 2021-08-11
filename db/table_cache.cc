@@ -485,7 +485,7 @@ Status TableCache::Get(const ReadOptions& options,
 Status TableCache::Get_aio(const ReadOptions& options,
                        const InternalKeyComparator& internal_comparator,
                        const FileMetaData& file_meta, const Slice& k, GetContext* get_context,
-		       struct aiocb* aiocbList_f, bool* cache_miss, BlockHandle *bhandle,
+		       struct iocb* aiocbList_f, io_context_t *ioctx_, bool* cache_miss, BlockHandle *bhandle,
 		       AlignedBuffer* buff, const SliceTransform* prefix_extractor,
                        HistogramImpl* file_read_hist, bool skip_filters,
                        int level, size_t max_file_size_for_l0_meta_pin) {
@@ -542,7 +542,7 @@ Status TableCache::Get_aio(const ReadOptions& options,
     if (s.ok()) {
       get_context->SetReplayLog(row_cache_entry);  // nullptr if no cache.
 //printf("table_cache start\n");
-      s = t->Get_aio(options, k, get_context, prefix_extractor, aiocbList_f,
+      s = t->Get_aio(options, k, get_context, prefix_extractor, aiocbList_f, ioctx_,
 		      cache_miss, bhandle, buff, skip_filters);
 //printf("table_cache end\n");
       get_context->SetReplayLog(nullptr);
@@ -560,7 +560,7 @@ Status TableCache::Get_aio(const ReadOptions& options,
 Status TableCache::Get_post_aio(const ReadOptions& options,
                        const InternalKeyComparator& internal_comparator,
                        const FileMetaData& file_meta, const Slice& k,
-                       GetContext* get_context, struct aiocb* aiocbList_f, BlockHandle* bhandle,
+                       GetContext* get_context, struct iocb* aiocbList_f, BlockHandle* bhandle,
 		       AlignedBuffer* buff, const SliceTransform* prefix_extractor,
                        HistogramImpl* file_read_hist, bool skip_filters,
                        int level, size_t max_file_size_for_l0_meta_pin) {

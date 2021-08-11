@@ -205,13 +205,16 @@ class PosixFileSystem : public FileSystem {
     int fd;
     int flags = cloexec_flags(O_RDONLY, &options);
 
+    //bool odirect = false;
+
     if (options.use_direct_reads && !options.use_mmap_reads) {
 #ifdef ROCKSDB_LITE
       return IOStatus::IOError(fname,
                                "Direct I/O not supported in RocksDB lite");
 #endif  // !ROCKSDB_LITE
 #if !defined(OS_MACOSX) && !defined(OS_OPENBSD) && !defined(OS_SOLARIS)
-      flags |= O_DIRECT;
+      //flags |= O_DIRECT;
+      //odirect = true;
       TEST_SYNC_POINT_CALLBACK("NewRandomAccessFile:O_DIRECT", &flags);
 #endif
     }
@@ -219,6 +222,7 @@ class PosixFileSystem : public FileSystem {
     do {
       IOSTATS_TIMER_GUARD(open_nanos);
       fd = open(fname.c_str(), flags, GetDBFileMode(allow_non_owner_access_));
+      //printf("%lu,open,%d,%d\n",gettid(),fd,odirect);
     } while (fd < 0 && errno == EINTR);
     if (fd < 0) {
       s = IOError("While open a file for random read", fname, errno);

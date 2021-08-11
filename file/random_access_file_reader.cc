@@ -204,7 +204,7 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
 }
 
 IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset, size_t n,
-		struct aiocb* aiocbList_f, AlignedBuffer* buff) const {
+		struct iocb* aiocbList_f, io_context_t *ioctx_, AlignedBuffer* buff) const {
   TEST_SYNC_POINT_CALLBACK("RandomAccessFileReader::Read", nullptr);
   IOStatus io_s;
   {
@@ -234,14 +234,10 @@ IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset
       // aio structure initialize
       buff->Alignment(alignment);
       buff->AllocateNewBuffer(read_size);
-      aiocbList_f->aio_buf = buff->Destination();
-      aiocbList_f->aio_nbytes = read_size;
-      aiocbList_f->aio_reqprio = 0;
-      aiocbList_f->aio_offset = aligned_offset;
-      aiocbList_f->aio_sigevent.sigev_notify = SIGEV_NONE;
+      io_prep_pread(aiocbList_f, 0, buff->Destination(), read_size, aligned_offset);
 
       //printf("Random read start\n");
-      io_s = file_->Read_aio(allowed, opts, nullptr, aiocbList_f);
+      io_s = file_->Read_aio(allowed, opts, nullptr, aiocbList_f, ioctx_);
       //printf("Random read end\n");
     }
 #endif  // !ROCKSDB_LITE
@@ -251,7 +247,7 @@ IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset
 
 IOStatus RandomAccessFileReader::Read_post_aio(const IOOptions& opts, uint64_t offset,
                                       size_t n, Slice* result, char* scratch,
-                                      AlignedBuf* aligned_buf, struct aiocb* aiocbList_f,
+                                      AlignedBuf* aligned_buf, struct iocb* aiocbList_f,
 				      AlignedBuffer* buff) const {
   (void)aligned_buf;
 

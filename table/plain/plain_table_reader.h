@@ -95,13 +95,13 @@ class PlainTableReader: public TableReader {
 
   Status Get_aio(const ReadOptions& , const Slice& ,
              GetContext* , const SliceTransform* ,
-             struct aiocb* , bool* , BlockHandle* ,
+             struct iocb* , io_context_t*, bool* , BlockHandle* ,
              AlignedBuffer* , bool ) override {
     return Status::OK();
   }
 
   Status Get_post_aio(const ReadOptions& , const Slice& ,
-             GetContext* , struct aiocb* ,
+             GetContext* , struct iocb* ,
              BlockHandle* , AlignedBuffer* ) override {
     return Status::OK();
   }

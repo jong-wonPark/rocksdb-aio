@@ -351,7 +351,7 @@ IOStatus BlockFetcher::ReadBlockContents() {
 }
 
 IOStatus BlockFetcher::ReadBlockContents_aio(
-		struct aiocb* aiocbList_f, AlignedBuffer* buff) {
+		struct iocb* aiocbList_f, io_context_t *ioctx_, AlignedBuffer* buff) {
   if (TryGetUncompressBlockFromPersistentCache()) {
     compression_type_ = kNoCompression;
 #ifndef NDEBUG
@@ -373,7 +373,7 @@ IOStatus BlockFetcher::ReadBlockContents_aio(
 	//printf("readblock start\n");
         io_status_ =
             file_->Read_aio(opts, handle_.offset(), block_size_with_trailer_,
-                        aiocbList_f, buff);
+                        aiocbList_f, ioctx_, buff);
 	//printf("readblock end\n");
       } else {
         PrepareBufferForBlockFromFile();
@@ -389,7 +389,7 @@ IOStatus BlockFetcher::ReadBlockContents_aio(
 }
 
 IOStatus BlockFetcher::ReadBlockContents_post_aio(
-		struct aiocb* aiocbList_f, AlignedBuffer* buff) {
+		struct iocb* aiocbList_f, AlignedBuffer* buff) {
   IOOptions opts;
   io_status_ = file_->PrepareIOOptions(read_options_, opts);
   // Actual file read

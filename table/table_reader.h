@@ -8,6 +8,9 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 #pragma once
+
+#include <libaio.h>
+
 #include <memory>
 #include "db/range_tombstone_fragmenter.h"
 #include "rocksdb/slice_transform.h"
@@ -112,11 +115,11 @@ class TableReader {
 
   virtual Status Get_aio(const ReadOptions& readOptions, const Slice& key,
                      GetContext* get_context, const SliceTransform* prefix_extractor,
-		     struct aiocb* aiocbList_f, bool* cache_miss, BlockHandle* bhandle,
+		     struct iocb* aiocbList_f, io_context_t *ioctx_, bool* cache_miss, BlockHandle* bhandle,
                      AlignedBuffer* buff, bool skip_filters = false) = 0;
 
   virtual Status Get_post_aio(const ReadOptions& read_options, const Slice& key,
-             GetContext* get_context, struct aiocb* aiocbList_f, BlockHandle* bhandle,
+             GetContext* get_context, struct iocb* aiocbList_f, BlockHandle* bhandle,
 	     AlignedBuffer* buff) = 0;
 
   virtual void MultiGet(const ReadOptions& readOptions,

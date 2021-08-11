@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-#include <aio.h>
+#include <libaio.h>
 
 #include "rocksdb/env.h"
 #include "rocksdb/io_status.h"
@@ -681,10 +681,10 @@ class FSRandomAccessFile {
                         IODebugContext* dbg) const = 0;
 
   virtual IOStatus Read_aio(size_t n, const IOOptions& options,
-                        IODebugContext* dbg, struct aiocb* aiocbList_f) const = 0;
+                        IODebugContext* dbg, struct iocb* aiocbList_f, io_context_t *ioctx_) const = 0;
 
   virtual IOStatus Read_post_aio(size_t n, const IOOptions& options,
-                        Slice* result, IODebugContext* dbg, struct aiocb* aiocbList_f) const = 0;
+                        Slice* result, IODebugContext* dbg, struct iocb* aiocbList_f) const = 0;
 
   // Readahead the file starting from offset by n bytes for caching.
   // If it's not implemented (default: `NotSupported`), RocksDB will create
@@ -1350,11 +1350,11 @@ class FSRandomAccessFileWrapper : public FSRandomAccessFile {
     return target_->Read(offset, n, options, result, scratch, dbg);
   }
   IOStatus Read_aio(size_t n, const IOOptions& options,
-                IODebugContext* dbg, struct aiocb* aiocbList_f) const final {
-    return target_->Read_aio(n, options, dbg, aiocbList_f);
+                IODebugContext* dbg, struct iocb* aiocbList_f, io_context_t *ioctx_) const final {
+    return target_->Read_aio(n, options, dbg, aiocbList_f, ioctx_);
   }
   IOStatus Read_post_aio(size_t n, const IOOptions& options,
-                Slice* result, IODebugContext* dbg, struct aiocb* aiocbList_f) const final {
+                Slice* result, IODebugContext* dbg, struct iocb* aiocbList_f) const final {
     return target_->Read_post_aio(n, options, result, dbg, aiocbList_f);
   }
   IOStatus MultiRead(FSReadRequest* reqs, size_t num_reqs,

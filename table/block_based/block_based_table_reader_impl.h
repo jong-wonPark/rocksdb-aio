@@ -123,7 +123,7 @@ TBlockIter* BlockBasedTable::NewDataBlockIterator_aio(
     const ReadOptions& ro, const BlockHandle& handle, TBlockIter* input_iter,
     BlockType block_type, GetContext* get_context,
     BlockCacheLookupContext* lookup_context, Status s,
-    FilePrefetchBuffer* prefetch_buffer, struct aiocb* aiocbList_f,
+    FilePrefetchBuffer* prefetch_buffer, struct iocb* aiocbList_f, io_context_t *ioctx_,
     bool* cache_miss, AlignedBuffer* buff) const {
   PERF_TIMER_GUARD(new_table_block_iter_nanos);
 
@@ -152,7 +152,7 @@ TBlockIter* BlockBasedTable::NewDataBlockIterator_aio(
   CachableEntry<Block> block;
   //printf("NewDatablockIter start\n");
   s = RetrieveBlock_aio(prefetch_buffer, ro, handle, dict, &block, block_type,
-                    get_context, /* use_cache */ true, aiocbList_f, cache_miss,
+                    get_context, /* use_cache */ true, aiocbList_f, ioctx_, cache_miss,
 		    buff);
   //printf("NewDatablockIter end\n");
   if (!s.ok()) {
@@ -224,7 +224,7 @@ TBlockIter* BlockBasedTable::NewDataBlockIterator_post_aio(
     const ReadOptions& ro, const BlockHandle& handle, TBlockIter* input_iter,
     BlockType block_type, GetContext* get_context, BlockCacheLookupContext* lookup_context,
     Status s, FilePrefetchBuffer* prefetch_buffer,
-    struct aiocb* aiocbList_f, AlignedBuffer* buff) const {
+    struct iocb* aiocbList_f, AlignedBuffer* buff) const {
   PERF_TIMER_GUARD(new_table_block_iter_nanos);
 
   TBlockIter* iter = input_iter != nullptr ? input_iter : new TBlockIter;

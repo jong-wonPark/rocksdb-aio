@@ -381,11 +381,11 @@ class StringSource : public FSRandomAccessFile {
   }
 
   IOStatus Read_aio(size_t , const IOOptions& ,
-                        IODebugContext* , struct aiocb* ) const override{
+                        IODebugContext* , struct iocb*, io_context_t* ) const override{
     return IOStatus::OK();
   }
   IOStatus Read_post_aio(size_t , const IOOptions& ,
-                        Slice* , IODebugContext* , struct aiocb* ) const override{
+                        Slice* , IODebugContext* , struct iocb* ) const override{
     return IOStatus::OK();
   }
 

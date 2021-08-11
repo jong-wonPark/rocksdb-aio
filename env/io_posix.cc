@@ -577,54 +577,8 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
   size_t left = n;
   char* ptr = scratch;
 
-  //struct aiocb aiocbList;
-  //aiocbList.aio_fildes = fd_;
-
   while (left > 0) {
     r = pread(fd_, ptr, left, static_cast<off_t>(offset));
-    ///////////////
-    /*
-    aiocbList.aio_buf = ptr;
-    aiocbList.aio_nbytes = n;
-    aiocbList.aio_offset = offset;
-    aiocbList.aio_reqprio = 0;
-    aiocbList.aio_sigevent.sigev_notify = SIGEV_NONE;
-    r = aio_read(&aiocbList);
-    if (r < 0) {
-      printf("errno:%d\n",errno);
-      if (r == -1 && errno == EINTR) {
-        continue;
-      }
-      break;
-    }
-    int count1 = 0;
-    while(1){
-      int tmp2 = 0;
-      for (int tmp1 = 0;tmp1 < 1000;tmp1++)
-	      tmp2++;
-      count1 += 1;
-      int status = aio_error(&aiocbList);
-	switch (status) {
-		case 0:
-		//printf("I/O succeeded\n");
-		break;
-		case EINPROGRESS:
-		//printf("In progress\n");
-		break;
-		case ECANCELED:
-		//printf("Canceled\n");
-		break;
-		default:
-		perror("aio_error");
-		break;
-	}
-      if (status != EINPROGRESS)
-	      break;
-    }
-    r = aio_return(&aiocbList);
-    printf("count1:%d,%ld\n",count1,r);
-    */
-	    ///////////////////////
     if (r <= 0) {
       if (r == -1 && errno == EINTR) {
         continue;
@@ -654,7 +608,7 @@ IOStatus PosixRandomAccessFile::Read(uint64_t offset, size_t n,
 
 IOStatus PosixRandomAccessFile::Read_aio(size_t n,
                                      const IOOptions& /*opts*/, IODebugContext* /*dbg*/,
-                                     struct aiocb* aiocbList_f) const {
+                                     struct iocb* aiocbList_f, io_context_t *ioctx_) const {
   if (use_direct_io()) {
     assert(IsSectorAligned(aiocbList_f->aio_offset, GetRequiredBufferAlignment()));
     assert(IsSectorAligned(n, GetRequiredBufferAlignment()));
@@ -665,7 +619,9 @@ IOStatus PosixRandomAccessFile::Read_aio(size_t n,
   aiocbList_f->aio_fildes = fd_;
 
   while (left > 0) {
-    r = aio_read(aiocbList_f);
+    r = io_submit(*ioctx_, 1, &aiocbList_f); // return value is the number of submitted iocbs
+    if (r == 1)
+      break;
     if (r <= 0) {
       if (r == -1 && errno == EINTR) {
         continue;
@@ -683,7 +639,7 @@ IOStatus PosixRandomAccessFile::Read_aio(size_t n,
   if (r < 0) {
     // An error: return a non-ok status
     s = IOError(
-        "While aio_read offset " + ToString(aiocbList_f->aio_offset) + " len " + ToString(n),
+        "While aio_read offset " + ToString(aiocbList_f->u.c.offset) + " len " + ToString(n),
         filename_, errno);
   }
   return s;
@@ -691,20 +647,20 @@ IOStatus PosixRandomAccessFile::Read_aio(size_t n,
 
 IOStatus PosixRandomAccessFile::Read_post_aio(size_t n, const IOOptions& /*opts*/,
 		                     Slice* result, IODebugContext* /*dbg*/,
-                                     struct aiocb* aiocbList_f) const {
+                                     struct iocb* aiocbList_f) const {
   if (use_direct_io()) {
     assert(IsSectorAligned(aiocbList_f->aio_offset, GetRequiredBufferAlignment()));
     assert(IsSectorAligned(n, GetRequiredBufferAlignment()));
     assert(IsSectorAligned(aiocbList_f->aio_buf, GetRequiredBufferAlignment()));
   }
   IOStatus s;
-  ssize_t r = -1;
+  ssize_t r = aiocbList_f->u.c.nbytes;
 
-  r = aio_return(aiocbList_f);
-  if (r < 0){
+  //r = aio_return(aiocbList_f);
+  if (aiocbList_f->u.c.nbytes == 0){
     size_t left = n;
-    char* ptr = (char*)aiocbList_f->aio_buf;
-    uint64_t offset = aiocbList_f->aio_offset;
+    char* ptr = (char*)aiocbList_f->u.c.buf;
+    uint64_t offset = aiocbList_f->u.c.offset;
     int fd1 = aiocbList_f->aio_fildes;
     while (left > 0) {
       r = pread(fd1, ptr, left, static_cast<off_t>(offset));
@@ -732,10 +688,10 @@ IOStatus PosixRandomAccessFile::Read_post_aio(size_t n, const IOOptions& /*opts*
   if (r < 0) {
     // An error: return a non-ok status
     s = IOError(
-        "While aio_return offset " + ToString(aiocbList_f->aio_offset) + " len " + ToString(n),
+        "While aio_return offset " + ToString(aiocbList_f->u.c.offset) + " len " + ToString(n),
         filename_, errno);
   }
-  *result = Slice((char*)aiocbList_f->aio_buf, (r < 0) ? 0 : n - left);
+  *result = Slice((char*)aiocbList_f->u.c.buf, (r < 0) ? 0 : n - left);
 
   return s;
 }

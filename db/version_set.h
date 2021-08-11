@@ -29,7 +29,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <aio.h>
+#include <libaio.h>
 
 #include "cache/cache_helpers.h"
 #include "db/blob/blob_file_meta.h"

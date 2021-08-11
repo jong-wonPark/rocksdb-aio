@@ -24,7 +24,7 @@
 #include "util/mutexlock.h"
 #include "util/thread_local.h"
 
-#include <aio.h>
+#include <libaio.h>
 
 // For non linux platform, the following macros are used only as place
 // holder.
@@ -196,9 +196,10 @@ class PosixRandomAccessFile : public FSRandomAccessFile {
                         Slice* result, char* scratch,
                         IODebugContext* dbg) const override;
   virtual IOStatus Read_aio(size_t n, const IOOptions& /*opts*/,
-		  IODebugContext* /*dbg*/, struct aiocb* aiocbList_f) const;
+		  IODebugContext* /*dbg*/, struct iocb* aiocbList_f,
+		  io_context_t *ioctx_) const;
   virtual IOStatus Read_post_aio(size_t n, const IOOptions& /*opts*/, Slice* result,
-		  IODebugContext* /*dbg*/,struct aiocb* aiocbList_f) const;
+		  IODebugContext* /*dbg*/,struct iocb* aiocbList_f) const;
 
   virtual IOStatus MultiRead(FSReadRequest* reqs, size_t num_reqs,
                              const IOOptions& options,
@@ -302,12 +303,12 @@ class PosixMmapReadableFile : public FSRandomAccessFile {
   virtual IOStatus Read(uint64_t offset, size_t n, const IOOptions& opts,
                         Slice* result, char* scratch,
                         IODebugContext* dbg) const override;
-  IOStatus Read_aio(size_t , const IOOptions& ,
-                        IODebugContext* , struct aiocb* ) const override{
+  IOStatus Read_aio(size_t , const IOOptions& , IODebugContext* ,
+		  struct iocb* , io_context_t*) const override{
     return IOStatus::OK();
   }
   IOStatus Read_post_aio(size_t , const IOOptions& ,
-                        Slice* , IODebugContext* , struct aiocb* ) const override{
+                        Slice* , IODebugContext* , struct iocb* ) const override{
     return IOStatus::OK();
   }
   virtual IOStatus InvalidateCache(size_t offset, size_t length) override;

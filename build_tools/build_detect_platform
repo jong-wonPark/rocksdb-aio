@@ -174,7 +174,7 @@ case "$TARGET_OS" in
         else
             PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -latomic"
         fi
-        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -lpthread -lrt -ldl"
+        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -lpthread -lrt -ldl -laio"
         if test $ROCKSDB_USE_IO_URING; then
             # check for liburing
             $CXX $PLATFORM_CXXFLAGS -x c++ - -luring -o /dev/null 2>/dev/null  <<EOF
@@ -198,14 +198,14 @@ EOF
     SunOS)
         PLATFORM=OS_SOLARIS
         COMMON_FLAGS="$COMMON_FLAGS -fno-builtin-memcmp -D_REENTRANT -DOS_SOLARIS -m64"
-        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -lpthread -lrt -static-libstdc++ -static-libgcc -m64"
+        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -lpthread -lrt -laio -static-libstdc++ -static-libgcc -m64"
         # PORT_FILES=port/sunos/sunos_specific.cc
         ;;
     AIX)
         PLATFORM=OS_AIX
         CC=gcc
         COMMON_FLAGS="$COMMON_FLAGS -maix64 -pthread -fno-builtin-memcmp -D_REENTRANT -DOS_AIX -D__STDC_FORMAT_MACROS"
-        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -pthread -lpthread -lrt -maix64 -static-libstdc++ -static-libgcc"
+        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -pthread -lpthread -lrt -laio -maix64 -static-libstdc++ -static-libgcc"
         # PORT_FILES=port/aix/aix_specific.cc
         ;;
     FreeBSD)
@@ -223,7 +223,7 @@ EOF
         else
             PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -latomic"
         fi
-        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -lpthread -lrt"
+        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -lpthread -lrt -laio"
         # PORT_FILES=port/gnu_kfreebsd/gnu_kfreebsd_specific.cc
         ;;
     NetBSD)
@@ -257,7 +257,7 @@ EOF
         else
             PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -latomic"
         fi
-        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -lpthread -lrt"
+        PLATFORM_LDFLAGS="$PLATFORM_LDFLAGS -lpthread -lrt -laio"
         # PORT_FILES=port/linux/linux_specific.cc
         ;;
     OS_ANDROID_CROSSCOMPILE)
