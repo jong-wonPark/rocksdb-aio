@@ -14,6 +14,8 @@
 #include <vector>
 #include <atomic>
 
+#include <libaio.h>
+
 #include "db/memtable_list.h"
 #include "db/table_cache.h"
 #include "db/table_properties_collector.h"
@@ -523,6 +525,11 @@ class ColumnFamilyData {
 
   ThreadLocalPtr* TEST_GetLocalSV() { return local_sv_.get(); }
 
+  io_context_t* Get_IOCTX(int iter_, io_context_t **ioctx_t){
+    *ioctx_t = &ioctx_[iter_];
+    return *ioctx_t;
+  }
+  
  private:
   friend class ColumnFamilySet;
   static const uint32_t kDummyColumnFamilyDataId;
@@ -617,6 +624,8 @@ class ColumnFamilyData {
   std::vector<std::shared_ptr<FSDirectory>> data_dirs_;
 
   bool db_paths_registered_;
+
+  io_context_t ioctx_[16];
 
   std::string full_history_ts_low_;
 };

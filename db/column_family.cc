@@ -535,6 +535,12 @@ ColumnFamilyData::ColumnFamilyData(
       allow_2pc_(db_options.allow_2pc),
       last_memtable_id_(0),
       db_paths_registered_(false) {
+  for(int i = 0; i < 16; i++){
+    ioctx_[i] = 0;
+    if (io_setup(60, &ioctx_[i]) < 0){
+      printf("Error in io_setup\n");
+    }
+  }
   if (id_ != kDummyColumnFamilyDataId) {
     // TODO(cc): RegisterDbPaths can be expensive, considering moving it
     // outside of this constructor which might be called with db mutex held.
@@ -608,6 +614,10 @@ ColumnFamilyData::ColumnFamilyData(
 // DB mutex held
 ColumnFamilyData::~ColumnFamilyData() {
   assert(refs_.load(std::memory_order_relaxed) == 0);
+  for(int i = 0; i < 16; i++){
+    io_destroy(ioctx_[i]);
+  }
+  
   // remove from linked list
   auto prev = prev_;
   auto next = next_;

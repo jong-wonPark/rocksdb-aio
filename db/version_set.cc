@@ -2104,6 +2104,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 
   // struct for aio
   //int access_ratio = storage_info_.get_access_ratio();
+  int cur_tid = gettid();
   int max_access_file = storage_info_.num_levels() + storage_info_.NumLevelFiles(0);
   int io_file_cur = 0, io_file_end = 0;
   //int num_access_file = 0, num_find_file = -1, predict_access_file = access_ratio * max_access_file / 100;
@@ -2111,9 +2112,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   unsigned long long time_list[max_access_file][2] = {0,};
   struct iocb aiocbList[max_access_file];
   char finish_request[max_access_file] = {0};
-  io_context_t ioctx_ = 0;
-  if (io_setup(max_access_file, &ioctx_) < 0)
-    printf("Error in io_setup\n");
+  io_context_t *ioctx_ = nullptr;
+  cfd_->Get_IOCTX(cur_tid%16, &ioctx_);
+  //if ( io_setup(max_access_file, &ioctx_) < 0)
+//	  printf("iosetup error\n");
   struct io_event event;
   struct timespec timeout;
   timeout.tv_sec=0;timeout.tv_nsec=1;
@@ -2143,7 +2145,6 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   unsigned long tmp_lo, tmp_hi, tmp_lo2, tmp_hi2;
   unsigned long long tmp_start, tmp_end, tmp_micro_sec;
 
-  int cur_tid = gettid();
   bool print = true;
   asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
   while_start = ((unsigned long long)hi << 32) | lo;
@@ -2200,7 +2201,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
       io_file_cur += 1;
 
       if(io_file_cur != io_file_end) {
-        if (io_getevents(ioctx_, 0, 1, &event, &timeout)){
+        if (io_getevents(*ioctx_, 0, 1, &event, &timeout)){
           for (int iter_ = io_file_end; iter_ < io_file_cur; iter_++){
             if (&aiocbList[iter_] == (struct iocb*)event.obj){
               finish_request[iter_] = 1;
@@ -2246,10 +2247,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
               struct io_event events_receive[maxReceiveNum];
               int receiveNum = 0;
               while(1){
-                receiveNum = io_getevents(ioctx_, 1, maxReceiveNum, events_receive, NULL);
+                receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, events_receive, NULL);
                 for(int i = 0; i < receiveNum; i++){
                   for(int j = io_file_end; j < io_file_cur; j++){
-                    if (&aiocbList[j] == (struct iocb *)events_receive[j].obj){
+                    if (&aiocbList[j] == (struct iocb *)events_receive[i].obj){
                       finish_request[j] = 1;
                       break;
                     }
@@ -2307,10 +2308,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
               struct io_event events_receive[maxReceiveNum];
               int receiveNum = 0;
               while(1){
-                receiveNum = io_getevents(ioctx_, 1, maxReceiveNum, events_receive, NULL);
+                receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, events_receive, NULL);
                 for(int i = 0; i < receiveNum; i++){
                   for(int j = io_file_end; j < io_file_cur; j++){
-                    if (&aiocbList[j] == (struct iocb *)events_receive[j].obj){
+                    if (&aiocbList[j] == (struct iocb *)events_receive[i].obj){
                       finish_request[j] = 1;
                       break;
                     }
@@ -2336,7 +2337,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 	    if (print)
 	    printf("%d,aioend1\n",cur_tid);
 	    asm volatile("rdtsc" : "=a" (tmp_lo), "=d" (tmp_hi));
-	    io_destroy(ioctx_);
+	    //io_destroy(ioctx_);
 	    asm volatile("rdtsc" : "=a" (tmp_lo2), "=d" (tmp_hi2));
 	    tmp_start = ((unsigned long long)tmp_hi << 32) | tmp_lo;
             tmp_end = ((unsigned long long)tmp_hi2 << 32) | tmp_lo2;
@@ -2358,10 +2359,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
               struct io_event events_receive[maxReceiveNum];
               int receiveNum = 0;
               while(1){
-                receiveNum = io_getevents(ioctx_, 1, maxReceiveNum, events_receive, NULL);
+                receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, events_receive, NULL);
                 for(int i = 0; i < receiveNum; i++){
                   for(int j = io_file_end; j < io_file_cur; j++){
-                    if (&aiocbList[j] == (struct iocb *)events_receive[j].obj){
+                    if (&aiocbList[j] == (struct iocb *)events_receive[i].obj){
                       finish_request[j] = 1;
                       break;
                     }
@@ -2430,10 +2431,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
               struct io_event events_receive[maxReceiveNum];
               int receiveNum = 0;
               while(1){
-                receiveNum = io_getevents(ioctx_, 1, maxReceiveNum, events_receive, NULL);
+                receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, events_receive, NULL);
                 for(int i = 0; i < receiveNum; i++){
                   for(int j = io_file_end; j < io_file_cur; j++){
-                    if (&aiocbList[j] == (struct iocb *)events_receive[j].obj){
+                    if (&aiocbList[j] == (struct iocb *)events_receive[i].obj){
                       finish_request[j] = 1;
                       break;
                     }
@@ -2479,10 +2480,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                 struct io_event events_receive[maxReceiveNum];
                 int receiveNum = 0;
                 while(1){
-                  receiveNum = io_getevents(ioctx_, 1, maxReceiveNum, events_receive, NULL);
+                  receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, events_receive, NULL);
                   for(int i = 0; i < receiveNum; i++){
                     for(int j = io_file_end; j < io_file_cur; j++){
-                      if (&aiocbList[j] == (struct iocb *)events_receive[j].obj){
+                      if (&aiocbList[j] == (struct iocb *)events_receive[i].obj){
                         finish_request[j] = 1;
                         break;
                       }
@@ -2507,7 +2508,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 	if (print)
 	printf("%d,aioend2\n",cur_tid);
 	asm volatile("rdtsc" : "=a" (tmp_lo), "=d" (tmp_hi));
-	io_destroy(ioctx_);
+	//io_destroy(ioctx_);
         asm volatile("rdtsc" : "=a" (tmp_lo2), "=d" (tmp_hi2));
 	tmp_start = ((unsigned long long)tmp_hi << 32) | tmp_lo;
         tmp_end = ((unsigned long long)tmp_hi2 << 32) | tmp_lo2;
@@ -2540,10 +2541,10 @@ next_file:
         struct io_event events_receive[maxReceiveNum];
         int receiveNum = 0;
         while(1){
-          receiveNum = io_getevents(ioctx_, 1, maxReceiveNum, events_receive, NULL);
+          receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, events_receive, NULL);
           for(int i = 0; i < receiveNum; i++){
             for(int j = io_file_end; j < io_file_cur; j++){
-              if (&aiocbList[j] == (struct iocb *)events_receive[j].obj){
+              if (&aiocbList[j] == (struct iocb *)events_receive[i].obj){
                 finish_request[j] = 1;
                 break;
               }
@@ -2571,10 +2572,10 @@ next_file:
         struct io_event events_receive[maxReceiveNum];
         int receiveNum = 0;
         while(1){
-          receiveNum = io_getevents(ioctx_, 1, maxReceiveNum, events_receive, NULL);
+          receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, events_receive, NULL);
           for(int i = 0; i < receiveNum; i++){
             for(int j = io_file_end; j < io_file_cur; j++){
-              if (&aiocbList[j] == (struct iocb *)events_receive[j].obj){
+              if (&aiocbList[j] == (struct iocb *)events_receive[i].obj){
                 finish_request[j] = 1;
                 break;
               }

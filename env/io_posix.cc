@@ -610,7 +610,7 @@ IOStatus PosixRandomAccessFile::Read_aio(size_t n,
                                      const IOOptions& /*opts*/, IODebugContext* /*dbg*/,
                                      struct iocb* aiocbList_f, io_context_t *ioctx_) const {
   if (use_direct_io()) {
-    assert(IsSectorAligned(aiocbList_f->aio_offset, GetRequiredBufferAlignment()));
+    assert(IsSectorAligned(aiocbList_f->u.c.offset, GetRequiredBufferAlignment()));
     assert(IsSectorAligned(n, GetRequiredBufferAlignment()));
   }
   IOStatus s;
@@ -618,8 +618,20 @@ IOStatus PosixRandomAccessFile::Read_aio(size_t n,
   size_t left = n;
   aiocbList_f->aio_fildes = fd_;
 
+  unsigned long tmp_lo, tmp_hi, tmp_lo2, tmp_hi2;
+  unsigned long long tmp_start, tmp_end, tmp_micro_sec;
+  bool print = true;
+  int cur_tid = gettid();
+
   while (left > 0) {
+    asm volatile("rdtsc" : "=a" (tmp_lo), "=d" (tmp_hi));
     r = io_submit(*ioctx_, 1, &aiocbList_f); // return value is the number of submitted iocbs
+    asm volatile("rdtsc" : "=a" (tmp_lo2), "=d" (tmp_hi2));
+    tmp_start = ((unsigned long long)tmp_hi << 32) | tmp_lo;
+    tmp_end = ((unsigned long long)tmp_hi2 << 32) | tmp_lo2;
+    tmp_micro_sec = (tmp_end - tmp_start) * 5 / 14000;
+    if (print)
+      printf("%d,io_submit,%llu\n",cur_tid,tmp_micro_sec);
     if (r == 1)
       break;
     if (r <= 0) {
@@ -649,9 +661,9 @@ IOStatus PosixRandomAccessFile::Read_post_aio(size_t n, const IOOptions& /*opts*
 		                     Slice* result, IODebugContext* /*dbg*/,
                                      struct iocb* aiocbList_f) const {
   if (use_direct_io()) {
-    assert(IsSectorAligned(aiocbList_f->aio_offset, GetRequiredBufferAlignment()));
+    assert(IsSectorAligned(aiocbList_f->u.c.offset, GetRequiredBufferAlignment()));
     assert(IsSectorAligned(n, GetRequiredBufferAlignment()));
-    assert(IsSectorAligned(aiocbList_f->aio_buf, GetRequiredBufferAlignment()));
+    assert(IsSectorAligned(aiocbList_f->u.c.buf, GetRequiredBufferAlignment()));
   }
   IOStatus s;
   ssize_t r = aiocbList_f->u.c.nbytes;
