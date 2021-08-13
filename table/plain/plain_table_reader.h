@@ -95,7 +95,7 @@ class PlainTableReader: public TableReader {
 
   Status Get_aio(const ReadOptions& , const Slice& ,
              GetContext* , const SliceTransform* ,
-             struct iocb* , io_context_t*, bool* , BlockHandle* ,
+             struct iocb* , io_context_t**, bool* , BlockHandle* ,
              AlignedBuffer* , bool ) override {
     return Status::OK();
   }

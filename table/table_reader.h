@@ -115,7 +115,7 @@ class TableReader {
 
   virtual Status Get_aio(const ReadOptions& readOptions, const Slice& key,
                      GetContext* get_context, const SliceTransform* prefix_extractor,
-		     struct iocb* aiocbList_f, io_context_t *ioctx_, bool* cache_miss, BlockHandle* bhandle,
+		     struct iocb* aiocbList_f, io_context_t **ioctx_, bool* cache_miss, BlockHandle* bhandle,
                      AlignedBuffer* buff, bool skip_filters = false) = 0;
 
   virtual Status Get_post_aio(const ReadOptions& read_options, const Slice& key,

@@ -123,7 +123,7 @@ TBlockIter* BlockBasedTable::NewDataBlockIterator_aio(
     const ReadOptions& ro, const BlockHandle& handle, TBlockIter* input_iter,
     BlockType block_type, GetContext* get_context,
     BlockCacheLookupContext* lookup_context, Status s,
-    FilePrefetchBuffer* prefetch_buffer, struct iocb* aiocbList_f, io_context_t *ioctx_,
+    FilePrefetchBuffer* prefetch_buffer, struct iocb* aiocbList_f, io_context_t **ioctx_,
     bool* cache_miss, AlignedBuffer* buff) const {
   PERF_TIMER_GUARD(new_table_block_iter_nanos);
 

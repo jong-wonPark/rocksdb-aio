@@ -100,7 +100,7 @@ class TableCache {
   Status Get_aio(const ReadOptions& options,
              const InternalKeyComparator& internal_comparator,
              const FileMetaData& file_meta, const Slice& k,
-             GetContext* get_context, struct iocb* aiocbList_f, io_context_t *ioctx_, bool* cache_miss,
+             GetContext* get_context, struct iocb* aiocbList_f, io_context_t **ioctx_, bool* cache_miss,
              BlockHandle* bhandle, AlignedBuffer* buff, const SliceTransform* prefix_extractor = nullptr,
              HistogramImpl* file_read_hist = nullptr, bool skip_filters = false,
              int level = -1, size_t max_file_size_for_l0_meta_pin = 0);

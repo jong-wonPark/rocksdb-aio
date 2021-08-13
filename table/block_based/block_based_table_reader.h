@@ -133,7 +133,7 @@ class BlockBasedTable : public TableReader {
 
   Status Get_aio(const ReadOptions& readOptions, const Slice& key,
              GetContext* get_context, const SliceTransform* prefix_extractor,
-             struct iocb* aiocbList_f, io_context_t *ioctx_, bool* cache_miss,
+             struct iocb* aiocbList_f, io_context_t **ioctx_, bool* cache_miss,
 	     BlockHandle* bhandle, AlignedBuffer* buff, bool skip_filters = false) override;
 
   Status Get_post_aio(const ReadOptions& read_options, const Slice& key,
@@ -248,7 +248,7 @@ class BlockBasedTable : public TableReader {
       const ReadOptions& ro, const BlockHandle& block_handle,
       TBlockIter* input_iter, BlockType block_type, GetContext* get_context,
       BlockCacheLookupContext* lookup_context, Status s,
-      FilePrefetchBuffer* prefetch_buffer, struct iocb* aiocbList_f, io_context_t *ioctx_,
+      FilePrefetchBuffer* prefetch_buffer, struct iocb* aiocbList_f, io_context_t **ioctx_,
       bool* cache_miss, AlignedBuffer* buff) const;
 
   template <typename TBlockIter>
@@ -328,7 +328,7 @@ class BlockBasedTable : public TableReader {
       const BlockHandle& handle, const UncompressionDict& uncompression_dict,
       CachableEntry<TBlocklike>* block_entry, BlockType block_type,
       GetContext* get_context, BlockContents* contents, struct iocb* aiocbList_f,
-      io_context_t *ioctx_, bool* cache_miss, AlignedBuffer* buff) const;
+      io_context_t **ioctx_, bool* cache_miss, AlignedBuffer* buff) const;
 
   template <typename TBlocklike>
   Status MaybeReadBlockAndLoadToCache_post_aio(
@@ -355,7 +355,7 @@ class BlockBasedTable : public TableReader {
       FilePrefetchBuffer* prefetch_buffer, const ReadOptions& ro,
       const BlockHandle& handle, const UncompressionDict& uncompression_dict,
       CachableEntry<TBlocklike>* block_entry, BlockType block_type,
-      GetContext* get_context, bool use_cache, struct iocb* aiocbList_f, io_context_t *ioctx_,
+      GetContext* get_context, bool use_cache, struct iocb* aiocbList_f, io_context_t **ioctx_,
       bool* cache_miss, AlignedBuffer* buff) const;
 
   template <typename TBlocklike>

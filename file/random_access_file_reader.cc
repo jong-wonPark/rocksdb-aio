@@ -204,7 +204,7 @@ IOStatus RandomAccessFileReader::Read(const IOOptions& opts, uint64_t offset,
 }
 
 IOStatus RandomAccessFileReader::Read_aio(const IOOptions& opts, uint64_t offset, size_t n,
-		struct iocb* aiocbList_f, io_context_t *ioctx_, AlignedBuffer* buff) const {
+		struct iocb* aiocbList_f, io_context_t **ioctx_, AlignedBuffer* buff) const {
   TEST_SYNC_POINT_CALLBACK("RandomAccessFileReader::Read", nullptr);
   IOStatus io_s;
   {

@@ -681,7 +681,7 @@ class FSRandomAccessFile {
                         IODebugContext* dbg) const = 0;
 
   virtual IOStatus Read_aio(size_t n, const IOOptions& options,
-                        IODebugContext* dbg, struct iocb* aiocbList_f, io_context_t *ioctx_) const = 0;
+                        IODebugContext* dbg, struct iocb* aiocbList_f, io_context_t **ioctx_) const = 0;
 
   virtual IOStatus Read_post_aio(size_t n, const IOOptions& options,
                         Slice* result, IODebugContext* dbg, struct iocb* aiocbList_f) const = 0;
@@ -1350,7 +1350,7 @@ class FSRandomAccessFileWrapper : public FSRandomAccessFile {
     return target_->Read(offset, n, options, result, scratch, dbg);
   }
   IOStatus Read_aio(size_t n, const IOOptions& options,
-                IODebugContext* dbg, struct iocb* aiocbList_f, io_context_t *ioctx_) const final {
+                IODebugContext* dbg, struct iocb* aiocbList_f, io_context_t **ioctx_) const final {
     return target_->Read_aio(n, options, dbg, aiocbList_f, ioctx_);
   }
   IOStatus Read_post_aio(size_t n, const IOOptions& options,

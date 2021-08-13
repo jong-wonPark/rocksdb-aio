@@ -351,7 +351,7 @@ IOStatus BlockFetcher::ReadBlockContents() {
 }
 
 IOStatus BlockFetcher::ReadBlockContents_aio(
-		struct iocb* aiocbList_f, io_context_t *ioctx_, AlignedBuffer* buff) {
+		struct iocb* aiocbList_f, io_context_t **ioctx_, AlignedBuffer* buff) {
   if (TryGetUncompressBlockFromPersistentCache()) {
     compression_type_ = kNoCompression;
 #ifndef NDEBUG

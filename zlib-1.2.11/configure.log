@@ -1,62 +1,62 @@
 --------------------
 ./configure --static
-Thu 12 Aug 2021 04:50:44 PM KST
+Fri 13 Aug 2021 04:18:16 PM KST
 Checking for gcc...
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 extern int getchar();
 int hello() {return getchar();}
 ===
-gcc -c ztest1754469.c
+gcc -c ztest1815547.c
 ... using gcc
 
 Checking for obsessive-compulsive compiler options...
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 int foo() { return 0; }
 ===
-gcc -c -fPIC ztest1754469.c
+gcc -c -fPIC ztest1815547.c
 
 Building static library libz.a version 1.2.11 with gcc.
 
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 #include <stdio.h>
 #include <stdlib.h>
 size_t dummy = 0;
 ===
-gcc -c -fPIC ztest1754469.c
+gcc -c -fPIC ztest1815547.c
 Checking for size_t... Yes.
 
 
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 #include <sys/types.h>
 off64_t dummy = 0;
 ===
-gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1754469.c
+gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1815547.c
 Checking for off64_t... Yes.
 Checking for fseeko... Yes.
 
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 #include <string.h>
 #include <errno.h>
 int main() { return strlen(strerror(errno)); }
 ===
-gcc -fPIC -D_LARGEFILE64_SOURCE=1 -o ztest1754469 ztest1754469.c
+gcc -fPIC -D_LARGEFILE64_SOURCE=1 -o ztest1815547 ztest1815547.c
 Checking for strerror... Yes.
 
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 #include <unistd.h>
 int main() { return 0; }
 ===
-gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1754469.c
+gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1815547.c
 Checking for unistd.h... Yes.
 
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 #include <stdarg.h>
 int main() { return 0; }
 ===
-gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1754469.c
+gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1815547.c
 Checking for stdarg.h... Yes.
 
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 #include <stdio.h>
 #include <stdarg.h>
 #include "zconf.h"
@@ -68,10 +68,10 @@ int main()
   return 0;
 }
 ===
-gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1754469.c
+gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1815547.c
 Checking whether to use vs[n]printf() or s[n]printf()... using vs[n]printf().
 
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 #include <stdio.h>
 #include <stdarg.h>
 int mytest(const char *fmt, ...)
@@ -88,10 +88,10 @@ int main()
   return (mytest("Hello%d\n", 1));
 }
 ===
-gcc -fPIC -D_LARGEFILE64_SOURCE=1 -o ztest1754469 ztest1754469.c
+gcc -fPIC -D_LARGEFILE64_SOURCE=1 -o ztest1815547 ztest1815547.c
 Checking for vsnprintf() in stdio.h... Yes.
 
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 #include <stdio.h>
 #include <stdarg.h>
 int mytest(const char *fmt, ...)
@@ -109,10 +109,10 @@ int main()
   return (mytest("Hello%d\n", 1));
 }
 ===
-gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1754469.c
+gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1815547.c
 Checking for return value of vsnprintf()... Yes.
 
-=== ztest1754469.c ===
+=== ztest1815547.c ===
 #define ZLIB_INTERNAL __attribute__((visibility ("hidden")))
 int ZLIB_INTERNAL foo;
 int main()
@@ -120,7 +120,7 @@ int main()
   return 0;
 }
 ===
-gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1754469.c
+gcc -c -fPIC -D_LARGEFILE64_SOURCE=1 ztest1815547.c
 Checking for attribute(visibility) support... Yes.
 
 ALL = static all64
