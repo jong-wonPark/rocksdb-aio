@@ -2135,12 +2135,13 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   int level, last_in_level;
   unsigned long lo, hi, lo2, hi2;
   unsigned long long oper_start, oper_end, pre_micro_sec, while_start, predict_iofinish_sec = 0;
-  unsigned long long pre_total_sec = 0, io_total_sec = 0, cur_total_sec = 0;
-  unsigned long long pre_avg_sec = storage_info_.get_pre_avg_micro_time(),
-    io_avg_sec = storage_info_.get_io_avg_micro_time();
+  unsigned long long pre_total_sec = 0, io_total_sec = 0, cur_total_sec = 0, micro_sec = 0;
+//  unsigned long long pre_avg_sec = storage_info_.get_pre_avg_micro_time();
+  unsigned long long io_avg_sec = storage_info_.get_io_avg_micro_time();
+  io_avg_sec = 20;
     //post_avg_sec = storage_info_.get_post_avg_micro_time();
 
-  bool print = false;
+  bool print = (false && (cur_tid%16 == 0));
   asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
   while_start = ((unsigned long long)hi << 32) | lo;
   if (print)
@@ -2179,7 +2180,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
     pre_micro_sec = (oper_end - oper_start) * 5 / 14000;
     cur_total_sec = (oper_end - while_start) * 5 / 14000;
     if (print)
-    printf("%d,get_aio,%llu,%d,%d\n",cur_tid,cur_total_sec,io_file_cur,cache_miss);
+    printf("%d,get_aio,%llu,%llu,%d,%d\n",cur_tid,pre_micro_sec,cur_total_sec,io_file_cur,cache_miss);
 
     if (cache_miss){
       time_list[io_file_cur][0] = cur_total_sec;
@@ -2223,15 +2224,16 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
           oper_start = ((unsigned long long)hi << 32) | lo;
           oper_end = ((unsigned long long)hi2 << 32) | lo2;
           cur_total_sec = (oper_end - while_start) * 5 / 14000;
+	  micro_sec = (oper_end - oper_start) * 5 / 14000;
       if (print)
-      printf("%d,get_post_aio,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+      printf("%d,get_post_aio,%llu,%llu,%d\n",cur_tid,micro_sec,cur_total_sec,io_file_end);
           io_file_end += 1;
           if (io_file_cur != io_file_end){
             predict_iofinish_sec = time_list[io_file_end][0] + io_avg_sec;
           }
         }
         else {
-          if (predict_iofinish_sec < cur_total_sec + pre_avg_sec || io_file_cur > io_file_end + 2) {
+          if (/*predict_iofinish_sec < cur_total_sec + pre_avg_sec ||*/ io_file_cur > io_file_end + 1) {
             // go to monitoring and go to post process
      if (print)
      printf("%d,monitor-notime-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
@@ -2327,13 +2329,13 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             storage_info_.set_pre_avg_micro_time(pre_total_sec / io_file_cur);
             storage_info_.set_io_avg_micro_time(io_total_sec / io_file_cur);
 	    if (print)
-	    printf("%d,aioend1\n",cur_tid);
+	    printf("%d,aioend1,%llu,%d\n",cur_tid,io_total_sec,io_file_cur);
             return;
           }
         }
         // Keep searching in other files
         if(io_file_cur != io_file_end) {
-          if (predict_iofinish_sec < cur_total_sec + pre_avg_sec || io_file_cur > io_file_end + 2) {
+          if (/*predict_iofinish_sec < cur_total_sec + pre_avg_sec ||*/ io_file_cur > io_file_end + 1) {
             // go to monitoring and go to post process
 	    if (print)
 	    printf("%d,monitor-notime2-enter,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
@@ -2436,6 +2438,8 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             goto post_aio;
           }
           else {
+		  asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
+            if (false && io_file_cur > io_file_end){
             int cancel_status;
 	    int cancel_try = io_file_cur - 1;
             while (cancel_try >= io_file_end) {
@@ -2446,11 +2450,18 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 		printf("%d,canceled,%d\n",cur_tid,cancel_try);
               } else {
                 if (errno != EAGAIN){
-                  printf("io_cancel error\n");
+                  printf("io_cancel error,%d\n",cancel_status);
 		}
               }
 	      cancel_try -= 1;
             }
+	    }
+	    asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+	    oper_start = ((unsigned long long)hi << 32) | lo;
+	    oper_end = ((unsigned long long)hi2 << 32) | lo2;
+	    micro_sec = (oper_end - oper_start) * 5 / 14000;
+	    if (print)
+              printf("%d,Ctime,%llu\n",cur_tid,micro_sec);
 	    /*monitor all requests which is not canceled*/
             while(io_file_cur != io_file_end) {
               if (print)
@@ -2483,7 +2494,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
           }
         }
 	if (print)
-	printf("%d,aioend2\n",cur_tid);
+	printf("%d,aioend2,%llu,%d\n",cur_tid,io_total_sec,io_file_cur);
         return;
       }
       case GetContext::kDeleted:
