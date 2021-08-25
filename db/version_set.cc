@@ -2092,7 +2092,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   struct iocb aiocbList[max_access_file];
   char finish_request[max_access_file] = {0};
   io_context_t *ioctx_ = nullptr;
-  cfd_->Get_IOCTX(cur_tid%16, &ioctx_);
+  cfd_->Get_IOCTX(cur_tid%24, &ioctx_);
   struct io_event event[max_access_file];
   struct timespec timeout;
   timeout.tv_sec=0;timeout.tv_nsec=0;
@@ -2121,7 +2121,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   io_avg_sec = 20;
     //post_avg_sec = storage_info_.get_post_avg_micro_time();
 
-  bool print = (false && (cur_tid%16 == 0));
+  bool print = (false && (cur_tid%24 == 0));
 
   asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
   while_start = ((unsigned long long)hi << 32) | lo;

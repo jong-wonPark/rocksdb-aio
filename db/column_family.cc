@@ -535,7 +535,7 @@ ColumnFamilyData::ColumnFamilyData(
       allow_2pc_(db_options.allow_2pc),
       last_memtable_id_(0),
       db_paths_registered_(false) {
-  for(int i = 0; i < 16; i++){
+  for(int i = 0; i < 24; i++){
     ioctx_[i] = 0;
     if (io_setup(60, &ioctx_[i]) < 0){
       printf("Error in io_setup\n");

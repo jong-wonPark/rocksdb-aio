@@ -625,7 +625,7 @@ class ColumnFamilyData {
 
   bool db_paths_registered_;
 
-  io_context_t ioctx_[16];
+  io_context_t ioctx_[24];
 
   std::string full_history_ts_low_;
 };
