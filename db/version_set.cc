@@ -2090,6 +2090,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   // io_file_cur/end is same that means there is no I/O inprogress
   unsigned long long time_list[max_access_file][2] = {0,};
   struct iocb aiocbList[max_access_file];
+  struct iocb* iocbp;
   char finish_request[max_access_file] = {0};
   io_context_t *ioctx_ = nullptr;
   cfd_->Get_IOCTX(cur_tid%24, &ioctx_);
@@ -2121,7 +2122,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   io_avg_sec = 20;
     //post_avg_sec = storage_info_.get_post_avg_micro_time();
 
-  bool print = (false && (cur_tid%24 == 0));
+  bool print = (false && (cur_tid%8 == 0));
 
   asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
   while_start = ((unsigned long long)hi << 32) | lo;
@@ -2176,6 +2177,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
       }
       else {
         predict_iofinish_sec -= pre_micro_sec;
+      }
+      if (fmetadata_list[io_file_cur].level != 3 || io_file_cur == io_file_end){
+        iocbp = &aiocbList[io_file_cur];
+        io_submit(*ioctx_, 1, &iocbp);
       }
       io_file_cur += 1;
 
@@ -2316,6 +2321,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
         }
         // Keep searching in other files
         if(io_file_cur != io_file_end) {
+          if (fmetadata_list[io_file_end].level == 3){
+            iocbp = &aiocbList[io_file_end];
+            io_submit(*ioctx_,1,&iocbp);
+          }
           receiveNum = io_getevents(*ioctx_, 1, (io_file_cur - io_file_end), event, &timeout);
 	  for(int i = 0; i < receiveNum; i++){
             for(int j = io_file_end; j < io_file_cur; j++){
@@ -2450,7 +2459,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 	    while(io_file_cur != io_file_end) {
               if (print)
               printf("%d,monitor-justwait-enter,%d\n",cur_tid,io_file_end);
-	      if (finish_request[io_file_end] == 0){
+	      if (finish_request[io_file_end] == 0 && fmetadata_list[io_file_end].level != 3){
 		int maxReceiveNum = io_file_cur - io_file_end;
                 while(1){
                   receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, event, NULL);
@@ -2464,6 +2473,9 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                   }
 		  if (finish_request[io_file_end] == 1){break;}
                 }
+	      }
+	      else {
+                finish_request[io_file_end] = 1;
 	      }
 	      //if (print)
 	      //printf("%d,monitor-justwait-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
