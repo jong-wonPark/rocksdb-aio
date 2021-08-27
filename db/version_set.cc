@@ -1948,20 +1948,20 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
       case GetContext::kFound:{
         if (fp.GetHitFileLevel() == 0) {
           RecordTick(db_statistics_, GET_HIT_L0);
-	  //printf("L0,");
+          //printf("L0,");
         } else if (fp.GetHitFileLevel() == 1) {
           RecordTick(db_statistics_, GET_HIT_L1);
-	  //printf("L1,");
+          //printf("L1,");
         } else if (fp.GetHitFileLevel() >= 2) {
           RecordTick(db_statistics_, GET_HIT_L2_AND_UP);
-	  //printf("L2,");
+          //printf("L2,");
         }
         asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
         oper_start = ((unsigned long long)hi << 32) | lo;
         oper_end = ((unsigned long long)hi2 << 32) | lo2;
         unsigned long long nano_sec = (oper_end - oper_start) * 5 / 14;
         int cur_tid = gettid();
-	if (false && cur_tid%16 == 0){
+        if (false && cur_tid%16 == 0){
           printf("RD,%d,%u,%llu\n",file_count,fp.GetHitFileLevel(),nano_sec);
         }
 
@@ -2091,7 +2091,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   unsigned long long time_list[max_access_file][2] = {0,};
   struct iocb aiocbList[max_access_file];
   struct iocb* iocbp;
-  char finish_request[max_access_file] = {0};
+  char finish_request[max_access_file] = {0}; /* 0:not send, 1:send but not complete 2:complete*/
   io_context_t *ioctx_ = nullptr;
   cfd_->Get_IOCTX(cur_tid%24, &ioctx_);
   struct io_event event[max_access_file];
@@ -2113,6 +2113,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 
   bool cache_miss = true, already_found = false, no_more_next = false;
   int level, last_in_level;
+  unsigned int non_overlap_level = 3;
   int receiveNum = 0;
   unsigned long lo, hi, lo2, hi2;
   unsigned long long oper_start, oper_end, pre_micro_sec, while_start, predict_iofinish_sec = 0;
@@ -2122,7 +2123,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   io_avg_sec = 20;
     //post_avg_sec = storage_info_.get_post_avg_micro_time();
 
-  bool print = (false && (cur_tid%8 == 0));
+  bool print = (false && (cur_tid%16 == 0));
 
   asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
   while_start = ((unsigned long long)hi << 32) | lo;
@@ -2178,31 +2179,32 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
       else {
         predict_iofinish_sec -= pre_micro_sec;
       }
-      if (fmetadata_list[io_file_cur].level != 3 || io_file_cur == io_file_end){
+      if (finish_request[io_file_cur] == 0 && (fmetadata_list[io_file_cur].level < non_overlap_level || io_file_cur == io_file_end)){
         iocbp = &aiocbList[io_file_cur];
         io_submit(*ioctx_, 1, &iocbp);
+        finish_request[io_file_cur] = 1;
       }
       io_file_cur += 1;
 
       if(io_file_cur != io_file_end) {
-	receiveNum = io_getevents(*ioctx_, 0, (io_file_cur-io_file_end), event, &timeout);
+        receiveNum = io_getevents(*ioctx_, 0, (io_file_cur-io_file_end), event, &timeout);
         if (receiveNum){
           for (int iter_1 = 0; iter_1 < receiveNum; iter_1++){
             for (int iter_ = io_file_end; iter_ < io_file_cur; iter_++){
               if (&aiocbList[iter_] == (struct iocb*)event[iter_1].obj){
-                finish_request[iter_] = 1;
-	        break;
-	      }
+                finish_request[iter_] = 2;
+                break;
+              }
             }
-	  }
-	}
-	if (finish_request[io_file_end]){
+          }
+        }
+        if (finish_request[io_file_end] == 2){
   post_aio:
           asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
           oper_start = ((unsigned long long)hi << 32) | lo;
           cur_total_sec = (oper_start - while_start) * 5 / 14000;
-	  if (print)
-	  printf("%d,post_start,%llu,%d\n", cur_tid,cur_total_sec,io_file_end);
+          if (print)
+          printf("%d,post_start,%llu,%d\n", cur_tid,cur_total_sec,io_file_end);
           time_list[io_file_end][1] = cur_total_sec;
           f = fmetadata_list[io_file_end].f_oldest;
           level = fmetadata_list[io_file_end].level;
@@ -2218,7 +2220,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
           asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
           oper_end = ((unsigned long long)hi2 << 32) | lo2;
           cur_total_sec = (oper_end - while_start) * 5 / 14000;
-	  micro_sec = (oper_end - oper_start) * 5 / 14000;
+          micro_sec = (oper_end - oper_start) * 5 / 14000;
       if (print)
       printf("%d,get_post_aio,%llu,%llu,%d\n",cur_tid,micro_sec,cur_total_sec,io_file_end);
           io_file_end += 1;
@@ -2227,27 +2229,31 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
           }
         }
         else {
-          if (/*predict_iofinish_sec < cur_total_sec + pre_avg_sec || io_file_cur > io_file_end + 1 ||*/ finish_request[io_file_end]) {
+          if (/*predict_iofinish_sec < cur_total_sec + pre_avg_sec || io_file_cur > io_file_end + 1 ||*/ finish_request[io_file_end] == 2) {
             // go to monitoring and go to post process
      if (print)
      printf("%d,monitor-notime-enter,%d\n",cur_tid,io_file_end);
-            if (finish_request[io_file_end] == 0){
-              //Monitor_aio(&aiocbList[0], &ioctx_, &finish_request, io_file_end, io_file_cur);
+            if (finish_request[io_file_end] != 2){
+              if (finish_request[io_file_end] == 0 && fmetadata_list[io_file_end].level >= non_overlap_level){
+                iocbp = &aiocbList[io_file_end];
+                io_submit(*ioctx_, 1, &iocbp);
+                finish_request[io_file_end] = 1;
+              }
               int maxReceiveNum = io_file_cur - io_file_end;
               while(1){
                 receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, event, NULL);
                 for(int i = 0; i < receiveNum; i++){
                   for(int j = io_file_end; j < io_file_cur; j++){
                     if (&aiocbList[j] == (struct iocb *)event[i].obj){
-                      finish_request[j] = 1;
+                      finish_request[j] = 2;
                       break;
                     }
                   }
                 }
-                if (finish_request[io_file_end] == 1)
+                if (finish_request[io_file_end] == 2)
                   break;
               } 
-	    }
+            }
      //if (print)
      //printf("%d,monitor-notime-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
             goto post_aio;
@@ -2285,27 +2291,31 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
         if (already_found) {
           if(io_file_cur != io_file_end) {
             // go to monitoring and go to post process
-	    if (print)
-	    printf("%d,monitor-already-enter,%d\n",cur_tid,io_file_end);
-	    if (finish_request[io_file_end] == 0){
-	      //Monitor_aio(&aiocbList, &ioctx_, &finish_request, io_file_end, io_file_cur);
+            if (print)
+            printf("%d,monitor-already-enter,%d\n",cur_tid,io_file_end);
+            if (finish_request[io_file_end] != 2){
+              if (finish_request[io_file_end] == 0 && fmetadata_list[io_file_end].level >= non_overlap_level){
+                iocbp = &aiocbList[io_file_end];
+                io_submit(*ioctx_, 1, &iocbp);
+                finish_request[io_file_end] = 1;
+              }
               int maxReceiveNum = io_file_cur - io_file_end;
               while(1){
                 receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, event, NULL);
                 for(int i = 0; i < receiveNum; i++){
                   for(int j = io_file_end; j < io_file_cur; j++){
                     if (&aiocbList[j] == (struct iocb *)event[i].obj){
-                      finish_request[j] = 1;
+                      finish_request[j] = 2;
                       break;
                     }
                   }
                 }
-                if (finish_request[io_file_end] == 1)
+                if (finish_request[io_file_end] == 2)
                   break;
               }
-	    }
-	    //if (print)
-	    //printf("%d,monitor-already-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            }
+            //if (print)
+            //printf("%d,monitor-already-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
             goto post_aio;
           }
           else{
@@ -2314,49 +2324,49 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             }
             storage_info_.set_pre_avg_micro_time(pre_total_sec / io_file_cur);
             storage_info_.set_io_avg_micro_time(io_total_sec / io_file_cur);
-	    if (print)
-	    printf("%d,aioend1,%llu,%d\n",cur_tid,io_total_sec,io_file_cur);
+            if (print)
+            printf("%d,aioend1,%llu,%d\n",cur_tid,io_total_sec,io_file_cur);
             return;
           }
         }
         // Keep searching in other files
         if(io_file_cur != io_file_end) {
-          if (fmetadata_list[io_file_end].level == 3){
-            iocbp = &aiocbList[io_file_end];
-            io_submit(*ioctx_,1,&iocbp);
-          }
           receiveNum = io_getevents(*ioctx_, 1, (io_file_cur - io_file_end), event, &timeout);
-	  for(int i = 0; i < receiveNum; i++){
+          for(int i = 0; i < receiveNum; i++){
             for(int j = io_file_end; j < io_file_cur; j++){
               if (&aiocbList[j] == (struct iocb *)event[i].obj){
-                finish_request[j] = 1;
+                finish_request[j] = 2;
                 break;
               }
             }
           }
-          if (/*predict_iofinish_sec < cur_total_sec + pre_avg_sec || io_file_cur > io_file_end + 1 ||*/ finish_request[io_file_end]) {
+          if (/*predict_iofinish_sec < cur_total_sec + pre_avg_sec || io_file_cur > io_file_end + 1 ||*/ finish_request[io_file_end] == 2) {
+            if (finish_request[io_file_end] == 0 && fmetadata_list[io_file_end].level >= non_overlap_level){
+              iocbp = &aiocbList[io_file_end];
+              io_submit(*ioctx_,1,&iocbp);
+              finish_request[io_file_end] = 1;
+            }
             // go to monitoring and go to post process
-	    if (print)
-	    printf("%d,monitor-notime2-enter,%d\n",cur_tid,io_file_end);
-	    if (finish_request[io_file_end] == 0){
-	      //Monitor_aio(&aiocbList, &ioctx_, &finish_request, io_file_end, io_file_cur);
-	      int maxReceiveNum = io_file_cur - io_file_end;
+            if (print)
+            printf("%d,monitor-notime2-enter,%d\n",cur_tid,io_file_end);
+            if (finish_request[io_file_end] != 2){
+              int maxReceiveNum = io_file_cur - io_file_end;
               while(1){
                 receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, event, NULL);
                 for(int i = 0; i < receiveNum; i++){
                   for(int j = io_file_end; j < io_file_cur; j++){
                     if (&aiocbList[j] == (struct iocb *)event[i].obj){
-                      finish_request[j] = 1;
+                      finish_request[j] = 2;
                       break;
                     }
                   }
                 }
-                if (finish_request[io_file_end] == 1)
+                if (finish_request[io_file_end] == 2)
                   break;
               }
-	    }
-	    //if (print)
-	    //printf("%d,monitor-notime2-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            }
+            //if (print)
+            //printf("%d,monitor-notime2-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
             goto post_aio;
           }
           else {
@@ -2399,32 +2409,36 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             }
           }
         }
-	int iter_io_count = 0;
+        int iter_io_count = 0;
         if ( io_file_cur != io_file_end) {
           if (cache_miss == false) {
             // need to wait io files to check that recent value exist.
             // but no more need to search on next file
-	    if (print)
-	    printf("%d,monitor-hitfound-enter,%d\n",cur_tid,io_file_end);
-	    if (finish_request[io_file_end] == 0){
-              //Monitor_aio(&aiocbList, &ioctx_, &finish_request, io_file_end, io_file_cur);
-	      int maxReceiveNum = io_file_cur - io_file_end;
+            if (print)
+            printf("%d,monitor-hitfound-enter,%d\n",cur_tid,io_file_end);
+            if (finish_request[io_file_end] != 2){
+              if (finish_request[io_file_end] == 0 && fmetadata_list[io_file_end].level >= non_overlap_level){
+                iocbp = &aiocbList[io_file_end];
+                io_submit(*ioctx_, 1, &iocbp);
+                finish_request[io_file_end] = 1;
+              }
+              int maxReceiveNum = io_file_cur - io_file_end;
               while(1){
                 receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, event, NULL);
                 for(int i = 0; i < receiveNum; i++){
                   for(int j = io_file_end; j < io_file_cur; j++){
                     if (&aiocbList[j] == (struct iocb *)event[i].obj){
-                      finish_request[j] = 1;
+                      finish_request[j] = 2;
                       break;
                     }
                   }
                 }
-                if (finish_request[io_file_end] == 1)
+                if (finish_request[io_file_end] == 2)
                   break;
               }
-	    }
-	    //if (print)
-	    //printf("%d,monitor-hitfound-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+            }
+            //if (print)
+            //printf("%d,monitor-hitfound-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
             already_found = true;
             get_context.SetState(GetContext::kNotFound);
             goto post_aio;
@@ -2433,52 +2447,52 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 /*            asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
             if (false && io_file_cur > io_file_end){
             int cancel_status;
-	    int cancel_try = io_file_cur - 1;
+            int cancel_try = io_file_cur - 1;
             while (cancel_try >= io_file_end) {
               cancel_status = io_cancel(*ioctx_, &aiocbList[cancel_try], event);
               if (cancel_status == 0){
                 finish_request[cancel_try] = 1;
-		if (print)
-		printf("%d,canceled,%d\n",cur_tid,cancel_try);
+                if (print)
+                printf("%d,canceled,%d\n",cur_tid,cancel_try);
               } else {
                 if (errno != EAGAIN){
                   printf("io_cancel error,%d\n",cancel_status);
-		}
+                }
               }
-	      cancel_try -= 1;
+              cancel_try -= 1;
             }
-	    }
-	    asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
-	    oper_start = ((unsigned long long)hi << 32) | lo;
-	    oper_end = ((unsigned long long)hi2 << 32) | lo2;
-	    micro_sec = (oper_end - oper_start) * 5 / 14000;
-	    if (print)
+            }
+            asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+            oper_start = ((unsigned long long)hi << 32) | lo;
+            oper_end = ((unsigned long long)hi2 << 32) | lo2;
+            micro_sec = (oper_end - oper_start) * 5 / 14000;
+            if (print)
               printf("%d,Ctime,%llu\n",cur_tid,micro_sec);
 */
-	    /*monitor all requests which is not canceled*/
-	    while(io_file_cur != io_file_end) {
+            /*monitor all requests which is not canceled*/
+            while(io_file_cur != io_file_end) {
               if (print)
               printf("%d,monitor-justwait-enter,%d\n",cur_tid,io_file_end);
-	      if (finish_request[io_file_end] == 0 && fmetadata_list[io_file_end].level != 3){
-		int maxReceiveNum = io_file_cur - io_file_end;
+              if (finish_request[io_file_end] == 1){
+                int maxReceiveNum = io_file_cur - io_file_end;
                 while(1){
                   receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, event, NULL);
                   for(int i = 0; i < receiveNum; i++){
                     for(int j = io_file_end; j < io_file_cur; j++){
                       if (&aiocbList[j] == (struct iocb *)event[i].obj){
-                        finish_request[j] = 1;
+                        finish_request[j] = 2;
                         break;
                       }
                     }
                   }
-		  if (finish_request[io_file_end] == 1){break;}
+                  if (finish_request[io_file_end] == 2){break;}
                 }
-	      }
-	      else {
-                finish_request[io_file_end] = 1;
-	      }
-	      //if (print)
-	      //printf("%d,monitor-justwait-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
+              }
+              else {
+                finish_request[io_file_end] = 2;
+              }
+              //if (print)
+              //printf("%d,monitor-justwait-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
               io_file_end += 1;
             }
             for (iter_io_count = 0;iter_io_count<io_file_cur;iter_io_count++){
@@ -2489,8 +2503,8 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             storage_info_.set_io_avg_micro_time(io_total_sec / io_file_cur);
           }
         }
-	if (print)
-	printf("%d,aioend2,%llu,%d\n",cur_tid,io_total_sec,iter_io_count);
+        if (print)
+        printf("%d,aioend2,%llu,%d\n",cur_tid,io_total_sec,iter_io_count);
         return;
       }
       case GetContext::kDeleted:
@@ -2511,20 +2525,24 @@ next_file:
     if (no_more_next) {
       if (print)
       printf("%d,monitor-nomore2-enter,%d\n",cur_tid,io_file_end);
-      if (finish_request[io_file_end] == 0){
-        //Monitor_aio(&aiocbList, &ioctx_, &finish_request, io_file_end, io_file_cur);
-	int maxReceiveNum = io_file_cur - io_file_end;
+      if (finish_request[io_file_end] != 2){
+        if (finish_request[io_file_end] == 0 && fmetadata_list[io_file_end].level >= non_overlap_level){
+          iocbp = &aiocbList[io_file_end];
+          io_submit(*ioctx_, 1, &iocbp);
+          finish_request[io_file_end] = 1;
+        }
+        int maxReceiveNum = io_file_cur - io_file_end;
         while(1){
           receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, event, NULL);
           for(int i = 0; i < receiveNum; i++){
             for(int j = io_file_end; j < io_file_cur; j++){
               if (&aiocbList[j] == (struct iocb *)event[i].obj){
-                finish_request[j] = 1;
+                finish_request[j] = 2;
                 break;
               }
             }
           }
-          if (finish_request[io_file_end] == 1)
+          if (finish_request[io_file_end] == 2)
             break;
         }
       }
@@ -2537,20 +2555,24 @@ next_file:
       no_more_next = true;
       if (print)
       printf("%d,monitor-nomore1-enter,%d\n",cur_tid,io_file_end);
-      if (finish_request[io_file_end] == 0){
-        //Monitor_aio(&aiocbList, &ioctx_, &finish_request, io_file_end, io_file_cur);
-	int maxReceiveNum = io_file_cur - io_file_end;
+      if (finish_request[io_file_end] != 2){
+        if (finish_request[io_file_end] == 0 && fmetadata_list[io_file_end].level >= non_overlap_level){
+          iocbp = &aiocbList[io_file_end];
+          io_submit(*ioctx_,1,&iocbp);
+          finish_request[io_file_end] = 1;
+        }
+        int maxReceiveNum = io_file_cur - io_file_end;
         while(1){
           receiveNum = io_getevents(*ioctx_, 1, maxReceiveNum, event, NULL);
           for(int i = 0; i < receiveNum; i++){
             for(int j = io_file_end; j < io_file_cur; j++){
               if (&aiocbList[j] == (struct iocb *)event[i].obj){
-                finish_request[j] = 1;
+                finish_request[j] = 2;
                 break;
               }
             }
           }
-          if (finish_request[io_file_end] == 1)
+          if (finish_request[io_file_end] == 2)
             break;
         }
       }
@@ -6387,3 +6409,4 @@ std::vector<VersionEdit>& ReactiveVersionSet::replay_buffer() {
 }
 
 }  // namespace ROCKSDB_NAMESPACE
+
