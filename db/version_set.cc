@@ -2113,7 +2113,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
 
   bool cache_miss = true, already_found = false, no_more_next = false;
   int level, last_in_level;
-  unsigned int non_overlap_level = 3;
+  unsigned int non_overlap_level = 1;
   int receiveNum = 0;
   unsigned long lo, hi, lo2, hi2;
   unsigned long long oper_start, oper_end, pre_micro_sec, while_start, predict_iofinish_sec = 0;
@@ -2123,7 +2123,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   io_avg_sec = 20;
     //post_avg_sec = storage_info_.get_post_avg_micro_time();
 
-  bool print = (true && (cur_tid%16 == 0));
+  bool print = (false && (cur_tid%16 == 0));
 
   asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
   while_start = ((unsigned long long)hi << 32) | lo;
