@@ -540,6 +540,10 @@ ColumnFamilyData::ColumnFamilyData(
     if (io_setup(60, &ioctx_[i]) < 0){
       printf("Error in io_setup\n");
     }
+    iocb_start[i] = 0;
+    for (int j = 0; j < 256; j++){
+      iocb_status[i][j] = 0;
+    }
   }
   if (id_ != kDummyColumnFamilyDataId) {
     // TODO(cc): RegisterDbPaths can be expensive, considering moving it

@@ -434,7 +434,8 @@ struct BlockBasedTableOptions {
   };
 
   IndexShorteningMode index_shortening =
-      IndexShorteningMode::kShortenSeparators;
+      //IndexShorteningMode::kShortenSeparators;
+      IndexShorteningMode::kNoShortening;
 
   // RocksDB does auto-readahead for iterators on noticing more than two reads
   // for a table file if user doesn't provide readahead_size. The readahead

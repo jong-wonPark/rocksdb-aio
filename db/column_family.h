@@ -529,6 +529,24 @@ class ColumnFamilyData {
     *ioctx_t = &ioctx_[iter_];
     return *ioctx_t;
   }
+
+  uint8_t* getRef_IOCBStatus(int cur_tid){
+    return &(iocb_status[cur_tid][0]);
+  }
+
+  AlignedBuffer* getRef_BUFF(int cur_tid){
+    return &(buff[cur_tid][0]);
+  }
+
+  struct iocb* getRef_IOCB(int cur_tid){
+    return &(iocbList[cur_tid][0]);
+  }
+
+  uint8_t get_IOCBStart(int cur_tid){ return iocb_start[cur_tid]; }
+
+  void set_IOCBStart(int cur_tid, uint8_t new_iocb_start){
+    iocb_start[cur_tid] = new_iocb_start;
+  }
   
  private:
   friend class ColumnFamilySet;
@@ -626,6 +644,11 @@ class ColumnFamilyData {
   bool db_paths_registered_;
 
   io_context_t ioctx_[24];
+  struct iocb iocbList[24][256];
+  AlignedBuffer buff[24][256];
+  uint8_t iocb_start[24];
+  uint8_t iocb_limit[24];
+  uint8_t iocb_status[24][256];
 
   std::string full_history_ts_low_;
 };
