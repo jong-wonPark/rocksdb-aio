@@ -2673,8 +2673,6 @@ Status BlockBasedTable::Get_aio(const ReadOptions& read_options, const Slice& ke
             s = pik_status;
           }
 
-	  printf("%d,SaveValue\n",gettid());
-
           if (!get_context->SaveValue(
                   parsed_key, biter.value(), &matched,
                   biter.IsValuePinned() ? &biter : nullptr)) {
@@ -2746,8 +2744,6 @@ Status BlockBasedTable::Get_post_aio(const ReadOptions& read_options, const Slic
       if (!pik_status.ok()) {
         s = pik_status;
       }
-
-      printf("%d,SaveValue\n",gettid());
 
       if (!get_context->SaveValue(
               parsed_key, biter.value(), &matched,

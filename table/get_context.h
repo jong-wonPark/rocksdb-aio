@@ -170,6 +170,8 @@ class GetContext {
 
   void push_operand(const Slice& value, Cleanable* value_pinner);
 
+  void setPinned(bool setValue) { pinnable_val_->setPinned(setValue); return; }
+
  private:
   const Comparator* ucmp_;
   const MergeOperator* merge_operator_;

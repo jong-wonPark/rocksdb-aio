@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <atomic>
+#include <list>
 
 #include <libaio.h>
 
@@ -542,6 +543,10 @@ class ColumnFamilyData {
     return &(iocbList[cur_tid][0]);
   }
 
+  std::list<uint8_t>* getRef_request_list(int cur_tid){
+    return &(request_list[cur_tid]);
+  }
+
   uint8_t get_IOCBStart(int cur_tid){ return iocb_start[cur_tid]; }
 
   void set_IOCBStart(int cur_tid, uint8_t new_iocb_start){
@@ -649,6 +654,7 @@ class ColumnFamilyData {
   uint8_t iocb_start[24];
   uint8_t iocb_limit[24];
   uint8_t iocb_status[24][256];
+  std::list<uint8_t> request_list[24];
 
   std::string full_history_ts_low_;
 };
