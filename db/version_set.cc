@@ -2095,7 +2095,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   struct iocb* iocbp;
   io_context_t *ioctx_ = nullptr;
   cfd_->Get_IOCTX(cur_tid%24, &ioctx_);
-  struct io_event event[max_access_file];
+  struct io_event event[256];
   struct timespec timeout;
   timeout.tv_sec=0;timeout.tv_nsec=0;
   BlockHandle bhandle[max_access_file];
