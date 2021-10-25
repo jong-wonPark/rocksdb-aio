@@ -2129,7 +2129,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   unsigned long long io_submit_sec = 0, io_submit_count = 0;
     //post_avg_sec = storage_info_.get_post_avg_micro_time();
 
-  bool print = true;//(false && (cur_tid%8 == 0));
+  bool print = (false && (cur_tid%8 == 0));
 
   asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
   while_start = ((unsigned long long)hi << 32) | lo;
@@ -2163,7 +2163,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
         for(uint8_t j = io_file_end; j != io_file_cur ; j++){
           if (&aiocbList[j] == (struct iocb *)event[i].obj){
             finish_request[j] = 2;
-	    find_iocb = true;
+            find_iocb = true;
             if(print){printf("%d,ioget,%d\n",cur_tid,j);}
             break;
           }
@@ -2172,10 +2172,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
           for(request_list_iter = request_list->begin();
                           request_list_iter!=request_list->end(); request_list_iter++){
             if (&aiocbList[*request_list_iter] == (struct iocb *)event[i].obj){
-              request_list->erase(request_list_iter);
-              delete[] buff[*request_list_iter].Destination();
-              finish_request[*request_list_iter] = 0;
               if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+              //delete[] buff[*request_list_iter].Destination();
+              finish_request[*request_list_iter] = 0;
+              request_list->erase(request_list_iter);
               break;
             }
           }
@@ -2184,7 +2184,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
     }
     if (finish_request[io_file_cur] == 2){
       //free buff
-      delete[] buff[io_file_cur].Destination();
+      //delete[] buff[io_file_cur].Destination();
       finish_request[io_file_cur] = 0;
     }
 
@@ -2217,8 +2217,8 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
         asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
         oper_end = ((unsigned long long)hi2 << 32) | lo2;
         cur_total_sec = (oper_end - while_start) * 5 / 14000;
-	io_submit_sec += (oper_end - oper_start) * 5 / 14000;
-	io_submit_count += 1;
+        io_submit_sec += (oper_end - oper_start) * 5 / 14000;
+        io_submit_count += 1;
         if ((io_file_cur - io_file_end) == 0) {
           predict_iofinish_sec = cur_total_sec + io_avg_sec;
         }
@@ -2239,7 +2239,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             for (uint8_t iter_ = io_file_end; iter_ != io_file_cur; iter_++){
               if (&aiocbList[iter_] == (struct iocb*)event[iter_1].obj){
                 finish_request[iter_] = 2;
-		find_iocb = true;
+                find_iocb = true;
                 if(print){printf("%d,ioget,%d\n",cur_tid,iter_);}
                 oper_end = ((unsigned long long)hi2 << 32) | lo2;
                 cur_total_sec = (oper_end - while_start) * 5 / 14000;
@@ -2252,10 +2252,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
               for(request_list_iter = request_list->begin();
                               request_list_iter!=request_list->end(); request_list_iter++){
                 if (&aiocbList[*request_list_iter] == (struct iocb *)event[iter_1].obj){
-                  request_list->erase(request_list_iter);
-                  delete[] buff[*request_list_iter].Destination();
-                  finish_request[*request_list_iter] = 0;
                   if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+                  //delete[] buff[*request_list_iter].Destination();
+                  finish_request[*request_list_iter] = 0;
+                  request_list->erase(request_list_iter);
                   break;
                 }
               }
@@ -2322,7 +2322,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                   for(uint8_t j = io_file_end; j != io_file_cur; j++){
                     if (&aiocbList[j] == (struct iocb *)event[i].obj){
                       finish_request[j] = 2;
-		      find_iocb = true;
+                      find_iocb = true;
                       if(print){printf("%d,ioget,%d\n",cur_tid,j);}
                       asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
                       oper_end = ((unsigned long long)hi2 << 32) | lo2;
@@ -2336,10 +2336,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                     for(request_list_iter = request_list->begin();
                                     request_list_iter!=request_list->end(); request_list_iter++){
                       if (&aiocbList[*request_list_iter] == (struct iocb *)event[i].obj){
-                        request_list->erase(request_list_iter);
-                        delete[] buff[*request_list_iter].Destination();
-                        finish_request[*request_list_iter] = 0;
                         if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+                        //delete[] buff[*request_list_iter].Destination();
+                        finish_request[*request_list_iter] = 0;
+                        request_list->erase(request_list_iter);
                         break;
                       }
                     }
@@ -2411,7 +2411,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                   for(uint8_t j = io_file_end; j != io_file_cur; j++){
                     if (&aiocbList[j] == (struct iocb *)event[i].obj){
                       finish_request[j] = 2;
-		      find_iocb = true;
+                      find_iocb = true;
                       if(print){printf("%d,ioget,%d\n",cur_tid,j);}
                       oper_end = ((unsigned long long)hi2 << 32) | lo2;
                       cur_total_sec = (oper_end - while_start) * 5 / 14000;
@@ -2424,10 +2424,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                     for(request_list_iter = request_list->begin();
                                     request_list_iter!=request_list->end(); request_list_iter++){
                       if (&aiocbList[*request_list_iter] == (struct iocb *)event[i].obj){
-                        request_list->erase(request_list_iter);
-                        delete[] buff[*request_list_iter].Destination();
-                        finish_request[*request_list_iter] = 0;
                         if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+                        //delete[] buff[*request_list_iter].Destination();
+                        finish_request[*request_list_iter] = 0;
+                        request_list->erase(request_list_iter);
                         break;
                       }
                     }
@@ -2446,7 +2446,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
               io_offset = iter_io_count - io_init;
               io_total_sec += (time_list[io_offset][1] - time_list[io_offset][0]);
               if (finish_request[iter_io_count] == 2){
-                delete[] buff[iter_io_count].Destination();
+                //delete[] buff[iter_io_count].Destination();
                 finish_request[iter_io_count] = 0;
               }
             }
@@ -2471,7 +2471,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             for(uint8_t j = io_file_end; j != io_file_cur; j++){
               if (&aiocbList[j] == (struct iocb *)event[i].obj){
                 finish_request[j] = 2;
-		find_iocb = true;
+                find_iocb = true;
                 if(print){printf("%d,ioget,%d\n",cur_tid,j);}
                 oper_end = ((unsigned long long)hi2 << 32) | lo2;
                 cur_total_sec = (oper_end - while_start) * 5 / 14000;
@@ -2484,10 +2484,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
               for(request_list_iter = request_list->begin();
                               request_list_iter!=request_list->end(); request_list_iter++){
                 if (&aiocbList[*request_list_iter] == (struct iocb *)event[i].obj){
-                  request_list->erase(request_list_iter);
-                  delete[] buff[*request_list_iter].Destination();
-                  finish_request[*request_list_iter] = 0;
                   if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+                  //delete[] buff[*request_list_iter].Destination();
+                  finish_request[*request_list_iter] = 0;
+                  request_list->erase(request_list_iter);
                   break;
                 }
               }
@@ -2533,10 +2533,10 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                     for(request_list_iter = request_list->begin();
                                     request_list_iter!=request_list->end(); request_list_iter++){
                       if (&aiocbList[*request_list_iter] == (struct iocb *)event[i].obj){
-                        request_list->erase(request_list_iter);
-                        delete[] buff[*request_list_iter].Destination();
-                        finish_request[*request_list_iter] = 0;
                         if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+                        //delete[] buff[*request_list_iter].Destination();
+                        finish_request[*request_list_iter] = 0;
+                        request_list->erase(request_list_iter);
                         break;
                       }
                     }
@@ -2620,7 +2620,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                   for(uint8_t j = io_file_end; j != io_file_cur; j++){
                     if (&aiocbList[j] == (struct iocb *)event[i].obj){
                       finish_request[j] = 2;
-		      find_iocb = true;
+                      find_iocb = true;
                       if(print){printf("%d,ioget,%d\n",cur_tid,j);}
                       oper_end = ((unsigned long long)hi2 << 32) | lo2;
                       cur_total_sec = (oper_end - while_start) * 5 / 14000;
@@ -2628,20 +2628,20 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                       time_list[io_offset][1] = cur_total_sec;
                       break;
                     }
-		  }
+                  }
                   if (find_iocb == false){
                     for(request_list_iter = request_list->begin();
                                     request_list_iter!=request_list->end(); request_list_iter++){
                       if (&aiocbList[*request_list_iter] == (struct iocb *)event[i].obj){
-                        request_list->erase(request_list_iter);
-                        delete[] buff[*request_list_iter].Destination();
-                        finish_request[*request_list_iter] = 0;
                         if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+                        //delete[] buff[*request_list_iter].Destination();
+                        finish_request[*request_list_iter] = 0;
+                        request_list->erase(request_list_iter);
                         break;
                       }
                     }
                   }
-		}
+                }
                 if (finish_request[io_file_end] == 2)
                   break;
               }
@@ -2649,7 +2649,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
             //if (print)
             //printf("%d,monitor-hitfound-exit,%llu,%d\n",cur_tid,cur_total_sec,io_file_end);
             already_found = true;
-	    get_context.setPinned(false);
+            get_context.setPinned(false);
             get_context.SetState(GetContext::kNotFound);
             goto post_aio;
           }
@@ -2666,22 +2666,22 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
                   cur_total_sec = (oper_end - while_start) * 5 / 14000;
                   io_offset = j - io_init;
                   time_list[io_offset][1] = cur_total_sec;
-		  find_iocb = true;
+                  find_iocb = true;
                   break;
                 }
               }
-	      if (find_iocb == false){
-	        for(request_list_iter = request_list->begin();
-				request_list_iter!=request_list->end(); request_list_iter++){
+              if (find_iocb == false){
+                for(request_list_iter = request_list->begin();
+                                request_list_iter!=request_list->end(); request_list_iter++){
                   if (&aiocbList[*request_list_iter] == (struct iocb *)event[i].obj){
-                    request_list->erase(request_list_iter);
-                    delete[] buff[*request_list_iter].Destination();
-                    finish_request[*request_list_iter] = 0;
                     if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+                    //delete[] buff[*request_list_iter].Destination();
+                    finish_request[*request_list_iter] = 0;
+                    request_list->erase(request_list_iter);
                     break;
                   }
                 }
-	      }
+              }
             }
           }
         }
@@ -2690,7 +2690,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
           if (time_list[io_offset][1]==0){break;}
           io_total_sec += (time_list[io_offset][1] - time_list[io_offset][0]);
           if (finish_request[iter_io_count] == 2){
-            delete[] buff[iter_io_count].Destination();
+            //delete[] buff[iter_io_count].Destination();
             finish_request[iter_io_count] = 0;
           }
         }
@@ -2755,7 +2755,7 @@ next_file:
             for(uint8_t j = io_file_end; j != io_file_cur; j++){
               if (&aiocbList[j] == (struct iocb *)event[i].obj){
                 finish_request[j] = 2;
-		find_iocb = true;
+                find_iocb = true;
                 if(print){printf("%d,ioget,%d\n",cur_tid,j);}
                 oper_end = ((unsigned long long)hi2 << 32) | lo2;
                 cur_total_sec = (oper_end - while_start) * 5 / 14000;
@@ -2768,10 +2768,10 @@ next_file:
               for(request_list_iter = request_list->begin();
                               request_list_iter!=request_list->end(); request_list_iter++){
                 if (&aiocbList[*request_list_iter] == (struct iocb *)event[i].obj){
-                  request_list->erase(request_list_iter);
-                  delete[] buff[*request_list_iter].Destination();
-                  finish_request[*request_list_iter] = 0;
                   if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+                  //delete[] buff[*request_list_iter].Destination();
+                  finish_request[*request_list_iter] = 0;
+                  request_list->erase(request_list_iter);
                   break;
                 }
               }
@@ -2813,7 +2813,7 @@ next_file:
             for(uint8_t j = io_file_end; j != io_file_cur; j++){
               if (&aiocbList[j] == (struct iocb *)event[i].obj){
                 finish_request[j] = 2;
-		find_iocb = true;
+                find_iocb = true;
                 if(print){printf("%d,ioget,%d\n",cur_tid,j);}
                 oper_end = ((unsigned long long)hi2 << 32) | lo2;
                 cur_total_sec = (oper_end - while_start) * 5 / 14000;
@@ -2826,10 +2826,10 @@ next_file:
               for(request_list_iter = request_list->begin();
                               request_list_iter!=request_list->end(); request_list_iter++){
                 if (&aiocbList[*request_list_iter] == (struct iocb *)event[i].obj){
-                  request_list->erase(request_list_iter);
-                  delete[] buff[*request_list_iter].Destination();
-                  finish_request[*request_list_iter] = 0;
                   if(print){printf("%d,ioget,%d\n",cur_tid,*request_list_iter);}
+                  //delete[] buff[*request_list_iter].Destination();
+                  finish_request[*request_list_iter] = 0;
+                  request_list->erase(request_list_iter);
                   break;
                 }
               }
