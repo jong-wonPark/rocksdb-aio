@@ -2098,8 +2098,8 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   AlignedBuffer* buff = cfd_->getRef_BUFF(cur_tid);
   std::list<uint8_t>* request_list = cfd_->getRef_request_list(cur_tid);
   std::list<uint8_t>::iterator request_list_iter = request_list->begin();
-  bool find_iocb = false, cache_miss = true, already_found = false, no_more_next = false;
-  char miss_count = 0; // the number of consecutive misses
+  bool find_iocb = false, cache_miss = true, already_found = false, no_more_next = false, first_miss = true;
+  char miss_count = 0, hit_count = 0; // the number of consecutive misses
 
   struct FdWithKeyRange_List {
     FdWithKeyRange_List() {
@@ -2209,11 +2209,12 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
     if (cache_miss){
       pre_total_sec += pre_micro_sec;
       io_offset = io_file_cur - io_init;
+      if (hit_count == 0 && miss_count == 0) {first_miss = true;}
       miss_count += 1;
       fmetadata_list[io_offset].f_oldest = f;
       fmetadata_list[io_offset].level = level;
       fmetadata_list[io_offset].last_in_level = last_in_level;
-      if (finish_request[io_file_cur] == 0 && (miss_count != 2 || level != 3) && 
+      if (finish_request[io_file_cur] == 0 && (first_miss == true || miss_count != 2 || level != 3) && 
         (fmetadata_list[io_offset].level < non_overlap_level || io_file_cur == io_file_end)){
         iocbp = &aiocbList[io_file_cur];
         asm volatile("rdtsc" : "=a" (lo), "=d" (hi));
@@ -2310,6 +2311,7 @@ post_aio:
     else{
       //if block cache hit
       miss_count = 0;
+      hit_count += 1;
     }
 
     // TODO: examine the behavior for corrupted key
