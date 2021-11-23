@@ -21,6 +21,11 @@
 #include "util/random.h"
 #include "util/rate_limiter.h"
 
+#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30
+#include <sys/syscall.h>
+#define gettid() syscall(SYS_gettid)
+#endif
+
 namespace ROCKSDB_NAMESPACE {
 IOStatus RandomAccessFileReader::Create(
     const std::shared_ptr<FileSystem>& fs, const std::string& fname,

@@ -61,6 +61,11 @@
 #include "util/string_util.h"
 #include "util/user_comparator_wrapper.h"
 
+#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30
+#include <sys/syscall.h>
+#define gettid() syscall(SYS_gettid)
+#endif
+
 namespace ROCKSDB_NAMESPACE {
 
 namespace {

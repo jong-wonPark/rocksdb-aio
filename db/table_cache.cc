@@ -30,6 +30,11 @@
 #include "util/coding.h"
 #include "util/stop_watch.h"
 
+#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30
+#include <sys/syscall.h>
+#define gettid() syscall(SYS_gettid)
+#endif
+
 namespace ROCKSDB_NAMESPACE {
 
 namespace {
