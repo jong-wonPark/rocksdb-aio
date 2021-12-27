@@ -1,0 +1,77 @@
+#!/bin/sh
+
+cd /home/jwpark/hdd_folder/RocksDB/rocksdb-aio
+#make clean
+#sudo make rocksdbjavastaticrelease -j48
+cp java/target/rocksdbjni-6.19.0.jar /home/jwpark/hdd_folder/YCSB/rocksdb/target/dependency/
+cd /home/jwpark/hdd_folder/YCSB
+mvn -pl site.ycsb:rocksdb-binding -am package
+cd rocksdb/target/dependency
+rm rocksdbjni-6.2.2.jar
+
+attach="3G-300G-baseline"
+#attach="3G-300G-NW"
+DBADDR="/home/jwpark/raid_zssd/db_log/YCSB"
+
+cd $DBADDR
+rm *
+cd /home/jwpark/hdd_folder/YCSB
+
+echo "load start"
+bin/ycsb.sh load rocksdb -s -P workloads/workloada -p \
+        exportfile=/home/jwpark/hdd_folder/db_log/ycsb-status-$witer.output \
+        -threads 16 -p rocksdb.dir=$DBADDR -p zeropadding=20 \
+        > /home/jwpark/hdd_folder/db_log/ycsb-log-load.txt
+du -sh $DBADDR
+
+for witer in a b c
+do
+        for clients in 8 16 24
+        do
+:<<"END"
+                cd $DBADDR
+                rm *
+                cd /home/jwpark/hdd_folder/YCSB
+
+                echo "load start"
+                bin/ycsb.sh load rocksdb -s -P workloads/workload$witer -p \
+                        exportfile=/home/jwpark/hdd_folder/db_log/ycsb-status-$witer.output \
+                        -threads 16 -p rocksdb.dir=$DBADDR -p zeropadding=20 \
+                        > /home/jwpark/hdd_folder/db_log/ycsb-log-load.txt
+                du -sh $DBADDR
+END
+                echo "load was finished. run start"
+                sync
+                sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
+                sleep 5
+
+                cd /home/jwpark/hdd_folder/db_log
+                rm ycsb-measurement.txt
+                cd /home/jwpark/hdd_folder/YCSB
+
+                iostat -c 1 > /home/jwpark/hdd_folder/db_log/iostat_cpu_ycsb.output &
+                iostat -d 1 | grep "md0" > /home/jwpark/hdd_folder/db_log/iostat_ssd_ycsb.output &
+
+                bin/ycsb.sh run rocksdb -s -P workloads/workload$witer -p \
+                        exportfile=/home/jwpark/hdd_folder/db_log/ycsb-status-$witer.output \
+                        -threads $clients -p rocksdb.dir=$DBADDR -s -p status.interval=1 -p zeropadding=20 \
+                        -p maxexecutiontime=600 > /home/jwpark/hdd_folder/db_log/ycsb-log-run-$witer.txt
+
+                ps -aux | grep "iostat -d 1" | grep -v grep | awk '{ print $2 }' | xargs kill -9
+                ps -aux | grep "iostat -c 1" | grep -v grep | awk '{ print $2 }' | xargs kill -9
+                du -sh $DBADDR
+#:<<"END"
+                cd /home/jwpark/hdd_folder/db_log
+                #python3 block_cache_analyzer.py ycsb-log-run-$witer.txt
+                mv ycsb-measurement.txt ycsb-measurement-$witer.txt
+                python3 trace_ycsb.py ycsb-measurement-$witer.txt
+                cp $DBADDR/LOG /home/jwpark/hdd_folder/db_log/LOG
+                python3 parse_iostat.py iostat_ssd_ycsb.output
+                python3 parse_iostat_cpu.py iostat_cpu_ycsb.output
+                zip -r $witer-T$clients-$attach.zip ycsb_history.csv iostat_ssd_ycsb.output LOG Bandwidth.csv iostat_cpu_ycsb.output CPUUtil.csv ycsb-measurement-$witer.txt
+                scp -P 4338 /home/jwpark/hdd_folder/db_log/ycsb-$witer-directio-T$clients-$attach.zip ubuntu2@115.145.211.190:~/rocksdb/log/fromjwpark
+                mv ycsb-log-run-$witer.txt $witer-T$clients-$attach.txt
+                #scp -P 4338 /home/jwpark/hdd_folder/db_log/$witer-T$clients-$attach.txt ubuntu2@115.145.211.190:~/rocksdb/log/fromjwpark
+#END
+        done
+done
