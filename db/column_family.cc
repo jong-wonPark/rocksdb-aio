@@ -535,8 +535,21 @@ ColumnFamilyData::ColumnFamilyData(
       allow_2pc_(db_options.allow_2pc),
       last_memtable_id_(0),
       db_paths_registered_(false) {
-  for(int i = 0; i < 24; i++){
+  
+  max_client_threads = db_options.max_client_threads;
+  ioctx_ = new io_context_t[max_client_threads];
+  iocbList = new struct iocb*[max_client_threads];
+  buff = new AlignedBuffer*[max_client_threads];
+  iocb_start = new uint8_t[max_client_threads];
+  iocb_limit = new uint8_t[max_client_threads];
+  iocb_status = new uint8_t*[max_client_threads];
+  request_list = new std::list<uint8_t>[max_client_threads];
+
+  for(int i = 0; i < max_client_threads; i++){
     ioctx_[i] = 0;
+    iocbList[i] = new struct iocb[256];
+    buff[i] = new struct AlignedBuffer[256];
+    iocb_status[i] = new uint8_t[256];
     if (io_setup(60, &ioctx_[i]) < 0){
       printf("Error in io_setup\n");
     }
@@ -618,9 +631,19 @@ ColumnFamilyData::ColumnFamilyData(
 // DB mutex held
 ColumnFamilyData::~ColumnFamilyData() {
   assert(refs_.load(std::memory_order_relaxed) == 0);
-  for(int i = 0; i < 16; i++){
+  for(int i = 0; i < max_client_threads; i++){
     io_destroy(ioctx_[i]);
+    delete[] iocbList[i];
+    delete[] buff[i];
+    delete[] iocb_status[i];
   }
+  delete[] ioctx_;
+  delete[] iocbList;
+  delete[] buff;
+  delete[] iocb_start;
+  delete[] iocb_limit;
+  delete[] iocb_status;
+  delete[] request_list;
   
   // remove from linked list
   auto prev = prev_;

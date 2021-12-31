@@ -218,6 +218,7 @@ public interface DBOptionsInterface<T extends DBOptionsInterface<T>> {
    */
   T setMaxFileOpeningThreads(int maxFileOpeningThreads);
 
+  T setMaxClientThreads(int maxClientThreads);
   /**
    * If {@link MutableDBOptionsInterface#maxOpenFiles()} is -1, DB will open all
    * files on DB::Open(). You can use this option to increase the number of

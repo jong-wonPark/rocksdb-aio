@@ -456,6 +456,12 @@ void Java_org_rocksdb_Options_setMaxFileOpeningThreads(
       ->max_file_opening_threads = static_cast<int>(jmax_file_opening_threads);
 }
 
+void Java_org_rocksdb_Options_setMaxClientThreads(
+    JNIEnv*, jobject, jlong jhandle, jint jmax_client_threads) {
+  reinterpret_cast<ROCKSDB_NAMESPACE::Options*>(jhandle)
+      ->max_client_threads = static_cast<int>(jmax_client_threads);
+}
+
 /*
  * Class:     org_rocksdb_Options
  * Method:    maxFileOpeningThreads
@@ -5554,6 +5560,12 @@ void Java_org_rocksdb_DBOptions_setMaxFileOpeningThreads(
     JNIEnv*, jobject, jlong jhandle, jint jmax_file_opening_threads) {
   reinterpret_cast<ROCKSDB_NAMESPACE::DBOptions*>(jhandle)
       ->max_file_opening_threads = static_cast<int>(jmax_file_opening_threads);
+}
+
+void Java_org_rocksdb_DBOptions_setMaxClientThreads(
+    JNIEnv*, jobject, jlong jhandle, jint jmax_client_threads) {
+  reinterpret_cast<ROCKSDB_NAMESPACE::DBOptions*>(jhandle)
+      ->max_client_threads = static_cast<int>(jmax_client_threads);
 }
 
 /*

@@ -463,6 +463,8 @@ struct DBOptions {
   // Default: 16
   int max_file_opening_threads = 16;
 
+  int max_client_threads = 16;
+
   // Once write-ahead logs exceed this size, we will start forcing the flush of
   // column families whose memtables are backed by the oldest live WAL file
   // (i.e. the ones that are causing all the space amplification). If set to 0

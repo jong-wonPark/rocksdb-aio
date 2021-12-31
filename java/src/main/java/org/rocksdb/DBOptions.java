@@ -260,6 +260,13 @@ public class DBOptions extends RocksObject
   }
 
   @Override
+  public DBOptions setMaxClientThreads(final int maxClientThreads) {
+    assert(isOwningHandle());
+    setMaxClientThreads(nativeHandle_, maxClientThreads);
+    return this;
+  }
+
+  @Override
   public int maxFileOpeningThreads() {
     assert(isOwningHandle());
     return maxFileOpeningThreads(nativeHandle_);
@@ -1319,6 +1326,7 @@ public class DBOptions extends RocksObject
   private native void setInfoLogLevel(long handle, byte logLevel);
   private native byte infoLogLevel(long handle);
   private native void setMaxOpenFiles(long handle, int maxOpenFiles);
+  private native void setMaxClientThreads(long handle, int maxClientThreads);
   private native int maxOpenFiles(long handle);
   private native void setMaxFileOpeningThreads(final long handle,
       final int maxFileOpeningThreads);

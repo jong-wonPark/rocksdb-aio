@@ -552,6 +552,10 @@ class ColumnFamilyData {
   void set_IOCBStart(int cur_tid, uint8_t new_iocb_start){
     iocb_start[cur_tid] = new_iocb_start;
   }
+
+  int maxClientThreads(){
+    return max_client_threads;
+  }
   
  private:
   friend class ColumnFamilySet;
@@ -648,13 +652,14 @@ class ColumnFamilyData {
 
   bool db_paths_registered_;
 
-  io_context_t ioctx_[24];
-  struct iocb iocbList[24][256];
-  AlignedBuffer buff[24][256];
-  uint8_t iocb_start[24];
-  uint8_t iocb_limit[24];
-  uint8_t iocb_status[24][256];
-  std::list<uint8_t> request_list[24];
+  int max_client_threads;
+  io_context_t* ioctx_;
+  struct iocb** iocbList; //[max_client_threads][256]
+  AlignedBuffer** buff; //[max_client_threads][256]
+  uint8_t* iocb_start;
+  uint8_t* iocb_limit;
+  uint8_t** iocb_status; //[max_client_threads][256]
+  std::list<uint8_t>* request_list;
 
   std::string full_history_ts_low_;
 };

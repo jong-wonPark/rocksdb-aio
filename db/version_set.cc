@@ -2085,7 +2085,7 @@ void Version::Get_aio(const ReadOptions& read_options, const LookupKey& k,
   FdWithKeyRange* f = fp.GetNextFile();
 
   // struct for aio
-  int cur_tid = gettid()%24;
+  int cur_tid = gettid()%cfd_->maxClientThreads();
   int max_access_file = storage_info_.num_levels() + storage_info_.NumLevelFiles(0);
   unsigned long long time_list[max_access_file][2] = {0,};
   uint8_t io_file_cur = cfd_->get_IOCBStart(cur_tid);

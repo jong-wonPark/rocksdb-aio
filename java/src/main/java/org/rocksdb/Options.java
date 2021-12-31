@@ -368,6 +368,13 @@ public class Options extends RocksObject
   }
 
   @Override
+  public Options setMaxClientThreads(final int maxClientThreads) {
+    assert(isOwningHandle());
+    setMaxClientThreads(nativeHandle_, maxClientThreads);
+    return this;
+  }
+
+  @Override
   public boolean useFsync() {
     assert(isOwningHandle());
     return useFsync(nativeHandle_);
@@ -2035,6 +2042,7 @@ public class Options extends RocksObject
   private native void setInfoLogLevel(long handle, byte logLevel);
   private native byte infoLogLevel(long handle);
   private native void setMaxOpenFiles(long handle, int maxOpenFiles);
+  private native void setMaxClientThreads(long handle, int maxClientThreads);
   private native int maxOpenFiles(long handle);
   private native void setMaxTotalWalSize(long handle,
       long maxTotalWalSize);
