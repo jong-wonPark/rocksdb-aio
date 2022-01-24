@@ -3113,8 +3113,16 @@ void rocksdb_options_set_max_background_compactions(rocksdb_options_t* opt, int 
   opt->rep.max_background_compactions = n;
 }
 
+void rocksdb_options_set_max_client_threads(rocksdb_options_t* opt, int n) {
+  opt->rep.max_client_threads = n;
+}
+
 int rocksdb_options_get_max_background_compactions(rocksdb_options_t* opt) {
   return opt->rep.max_background_compactions;
+}
+
+int rocksdb_options_get_max_client_threads(rocksdb_options_t* opt) {
+  return opt->rep.max_client_threads;
 }
 
 void rocksdb_options_set_base_background_compactions(rocksdb_options_t* opt,

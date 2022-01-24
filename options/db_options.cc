@@ -237,10 +237,6 @@ static std::unordered_map<std::string, OptionTypeInfo>
          {offsetof(struct ImmutableDBOptions, max_file_opening_threads),
           OptionType::kInt, OptionVerificationType::kNormal,
           OptionTypeFlags::kNone}},
-        {"max_client_threads",
-         {offsetof(struct ImmutableDBOptions, max_client_threads),
-          OptionType::kInt, OptionVerificationType::kNormal,
-          OptionTypeFlags::kNone}},
         {"table_cache_numshardbits",
          {offsetof(struct ImmutableDBOptions, table_cache_numshardbits),
           OptionType::kInt, OptionVerificationType::kNormal,
@@ -614,8 +610,6 @@ void ImmutableDBOptions::Dump(Logger* log) const {
                    info_log.get());
   ROCKS_LOG_HEADER(log, "               Options.max_file_opening_threads: %d",
                    max_file_opening_threads);
-  ROCKS_LOG_HEADER(log, "                     Options.max_client_threads: %d",
-                   max_client_threads);
   ROCKS_LOG_HEADER(log, "                             Options.statistics: %p",
                    statistics.get());
   ROCKS_LOG_HEADER(log, "                              Options.use_fsync: %d",
