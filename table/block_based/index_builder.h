@@ -103,6 +103,10 @@ class IndexBuilder {
 
   virtual bool seperator_is_key_plus_seq() { return true; }
 
+  virtual void AddKeyNum() = 0;
+  virtual void setKeyNum(uint32_t key_num_) = 0;
+  virtual uint32_t getKeyNum() = 0;
+
  protected:
   const InternalKeyComparator* comparator_;
   // Set after ::Finish is called
@@ -170,7 +174,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
     auto sep = Slice(*last_key_in_current_block);
 
     assert(!include_first_key_ || !current_block_first_internal_key_.empty());
-    IndexValue entry(block_handle, current_block_first_internal_key_);
+    IndexValue entry(block_handle, current_block_first_internal_key_, key_num);
     std::string encoded_entry;
     std::string delta_encoded_entry;
     entry.EncodeTo(&encoded_entry, include_first_key_, nullptr);
@@ -190,6 +194,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
     }
 
     current_block_first_internal_key_.clear();
+    key_num = 0;
   }
 
   using IndexBuilder::Finish;
@@ -214,6 +219,10 @@ class ShortenedIndexBuilder : public IndexBuilder {
 
   friend class PartitionedIndexBuilder;
 
+  virtual void AddKeyNum() { key_num++;  }
+  virtual void setKeyNum(uint32_t key_num_) { key_num = key_num_; }
+  virtual uint32_t getKeyNum() { return key_num; }
+
  private:
   BlockBuilder index_block_builder_;
   BlockBuilder index_block_builder_without_seq_;
@@ -223,6 +232,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
   BlockBasedTableOptions::IndexShorteningMode shortening_mode_;
   BlockHandle last_encoded_handle_ = BlockHandle::NullBlockHandle();
   std::string current_block_first_internal_key_;
+  uint32_t key_num = 0;
 };
 
 // HashIndexBuilder contains a binary-searchable primary index and the
@@ -325,6 +335,10 @@ class HashIndexBuilder : public IndexBuilder {
     return primary_index_builder_.seperator_is_key_plus_seq();
   }
 
+  virtual void AddKeyNum() { key_num++;  }
+  virtual void setKeyNum(uint32_t key_num_) { key_num = key_num_; }
+  virtual uint32_t getKeyNum() { return key_num; }
+
  private:
   void FlushPendingPrefix() {
     prefix_block_.append(pending_entry_prefix_.data(),
@@ -351,6 +365,7 @@ class HashIndexBuilder : public IndexBuilder {
   std::string pending_entry_prefix_;
 
   uint64_t current_restart_index_ = 0;
+  uint32_t key_num = 0;
 };
 
 /**
@@ -409,6 +424,10 @@ class PartitionedIndexBuilder : public IndexBuilder {
 
   bool get_use_value_delta_encoding() { return use_value_delta_encoding_; }
 
+  virtual void AddKeyNum() { key_num++;  }
+  virtual void setKeyNum(uint32_t key_num_) { key_num = key_num_; }
+  virtual uint32_t getKeyNum() { return key_num; }
+
  private:
   // Set after ::Finish is called
   size_t top_level_index_size_ = 0;
@@ -440,5 +459,6 @@ class PartitionedIndexBuilder : public IndexBuilder {
   // true if it should cut the next filter partition block
   bool cut_filter_block = false;
   BlockHandle last_encoded_handle_;
+  uint32_t key_num = 0;
 };
 }  // namespace ROCKSDB_NAMESPACE

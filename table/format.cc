@@ -105,6 +105,8 @@ void IndexValue::EncodeTo(std::string* dst, bool have_first_key,
   if (have_first_key) {
     PutLengthPrefixedSlice(dst, first_internal_key);
   }
+
+  PutVarint32(dst, key_num);
 }
 
 Status IndexValue::DecodeFrom(Slice* input, bool have_first_key,
@@ -129,6 +131,12 @@ Status IndexValue::DecodeFrom(Slice* input, bool have_first_key,
   } else if (!GetLengthPrefixedSlice(input, &first_internal_key)) {
     return Status::Corruption("bad first key in block info");
   }
+
+  if (!GetVarint32(input, &key_num)) {
+    return Status::Corruption("bad key_num index value");
+  }
+
+  //printf("decode %u\n",key_num);
 
   return Status::OK();
 }

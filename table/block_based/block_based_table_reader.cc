@@ -2397,6 +2397,8 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
       for_count1 += 1;
       IndexValue v = iiter->value();
 
+      //printf("key_num: %u\n", v.key_num);
+
       bool not_exist_in_filter =
           filter != nullptr && filter->IsBlockBased() == true &&
           !filter->KeyMayMatch(ExtractUserKeyAndStripTimestamp(key, ts_sz),

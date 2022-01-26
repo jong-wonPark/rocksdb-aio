@@ -92,10 +92,13 @@ struct IndexValue {
   BlockHandle handle;
   // Empty means unknown.
   Slice first_internal_key;
+  uint32_t key_num;
 
   IndexValue() = default;
   IndexValue(BlockHandle _handle, Slice _first_internal_key)
-      : handle(_handle), first_internal_key(_first_internal_key) {}
+      : handle(_handle), first_internal_key(_first_internal_key), key_num(0) {}
+  IndexValue(BlockHandle _handle, Slice _first_internal_key, uint32_t key_num_)
+      : handle(_handle), first_internal_key(_first_internal_key), key_num(key_num_) {}
 
   // have_first_key indicates whether the `first_internal_key` is used.
   // If previous_handle is not null, delta encoding is used;

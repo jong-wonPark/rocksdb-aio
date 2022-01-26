@@ -935,6 +935,7 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
         }
       }
     }
+    r->index_builder->AddKeyNum();
 
     // Note: PartitionedFilterBlockBuilder requires key being added to filter
     // builder after being added to index builder.
