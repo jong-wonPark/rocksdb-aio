@@ -630,7 +630,8 @@ class IndexBlockIter final : public BlockIter<IndexValue> {
       IndexValue entry;
       Slice v = value_;
       Status decode_s __attribute__((__unused__)) =
-          entry.DecodeFrom(&v, have_first_key_, nullptr);
+          entry.DecodeFromWithAllIndex(&v, have_first_key_, nullptr);
+	  //entry.DecodeFrom(&v, have_first_key_, nullptr);
       assert(decode_s.ok());
       return entry;
     }

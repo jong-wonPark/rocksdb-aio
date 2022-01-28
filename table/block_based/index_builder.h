@@ -103,7 +103,7 @@ class IndexBuilder {
 
   virtual bool seperator_is_key_plus_seq() { return true; }
 
-  virtual void AddKeyNum() = 0;
+  virtual void AddKeyNum(const Slice& key) = 0;
   virtual void setKeyNum(uint32_t key_num_) = 0;
   virtual uint32_t getKeyNum() = 0;
 
@@ -142,6 +142,9 @@ class ShortenedIndexBuilder : public IndexBuilder {
         shortening_mode_(shortening_mode) {
     // Making the default true will disable the feature for old versions
     seperator_is_key_plus_seq_ = (format_version <= 2);
+    key_offset.clear();
+    key_offset.push_back(0);
+    key_buffer.clear();
   }
 
   virtual void OnKeyAdded(const Slice& key) override {
@@ -177,10 +180,14 @@ class ShortenedIndexBuilder : public IndexBuilder {
     IndexValue entry(block_handle, current_block_first_internal_key_, key_num);
     std::string encoded_entry;
     std::string delta_encoded_entry;
-    entry.EncodeTo(&encoded_entry, include_first_key_, nullptr);
+    entry.EncodeToWithAllIndex(&encoded_entry, include_first_key_, nullptr,
+                       key_offset, &key_buffer);
+    //entry.EncodeTo(&encoded_entry, include_first_key_, nullptr);
     if (use_value_delta_encoding_ && !last_encoded_handle_.IsNull()) {
-      entry.EncodeTo(&delta_encoded_entry, include_first_key_,
-                     &last_encoded_handle_);
+      entry.EncodeToWithAllIndex(&delta_encoded_entry, include_first_key_,
+                     &last_encoded_handle_, key_offset, &key_buffer);
+      //entry.EncodeTo(&delta_encoded_entry, include_first_key_,
+      //               &last_encoded_handle_);
     } else {
       // If it's the first block, or delta encoding is disabled,
       // BlockBuilder::Add() below won't use delta-encoded slice.
@@ -195,6 +202,9 @@ class ShortenedIndexBuilder : public IndexBuilder {
 
     current_block_first_internal_key_.clear();
     key_num = 0;
+    key_buffer.clear();
+    key_offset.clear();
+    key_offset.push_back(0);
   }
 
   using IndexBuilder::Finish;
@@ -219,7 +229,11 @@ class ShortenedIndexBuilder : public IndexBuilder {
 
   friend class PartitionedIndexBuilder;
 
-  virtual void AddKeyNum() { key_num++;  }
+  virtual void AddKeyNum(const Slice& key) {
+    key_num++;
+    key_buffer.append(key.data(), key.size());
+    key_offset.push_back(key_offset.back()+static_cast<uint32_t>(key.size()));
+  }
   virtual void setKeyNum(uint32_t key_num_) { key_num = key_num_; }
   virtual uint32_t getKeyNum() { return key_num; }
 
@@ -233,6 +247,8 @@ class ShortenedIndexBuilder : public IndexBuilder {
   BlockHandle last_encoded_handle_ = BlockHandle::NullBlockHandle();
   std::string current_block_first_internal_key_;
   uint32_t key_num = 0;
+  std::vector<uint32_t> key_offset;
+  std::string key_buffer;
 };
 
 // HashIndexBuilder contains a binary-searchable primary index and the
@@ -335,7 +351,11 @@ class HashIndexBuilder : public IndexBuilder {
     return primary_index_builder_.seperator_is_key_plus_seq();
   }
 
-  virtual void AddKeyNum() { key_num++;  }
+  virtual void AddKeyNum(const Slice& key) {
+    key_num++;
+    key_buffer.append(key.data(), key.size());
+    key_offset.push_back(key_offset.back()+static_cast<uint32_t>(key.size()));
+  }
   virtual void setKeyNum(uint32_t key_num_) { key_num = key_num_; }
   virtual uint32_t getKeyNum() { return key_num; }
 
@@ -366,6 +386,8 @@ class HashIndexBuilder : public IndexBuilder {
 
   uint64_t current_restart_index_ = 0;
   uint32_t key_num = 0;
+  std::vector<uint32_t> key_offset;
+  std::string key_buffer;
 };
 
 /**
@@ -424,7 +446,11 @@ class PartitionedIndexBuilder : public IndexBuilder {
 
   bool get_use_value_delta_encoding() { return use_value_delta_encoding_; }
 
-  virtual void AddKeyNum() { key_num++;  }
+  virtual void AddKeyNum(const Slice& key) {
+    key_num++;
+    key_buffer.append(key.data(), key.size());
+    key_offset.push_back(key_offset.back()+static_cast<uint32_t>(key.size()));
+  }
   virtual void setKeyNum(uint32_t key_num_) { key_num = key_num_; }
   virtual uint32_t getKeyNum() { return key_num; }
 
@@ -460,5 +486,7 @@ class PartitionedIndexBuilder : public IndexBuilder {
   bool cut_filter_block = false;
   BlockHandle last_encoded_handle_;
   uint32_t key_num = 0;
+  std::vector<uint32_t> key_offset;
+  std::string key_buffer;
 };
 }  // namespace ROCKSDB_NAMESPACE

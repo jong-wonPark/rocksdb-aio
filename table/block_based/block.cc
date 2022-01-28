@@ -506,6 +506,7 @@ bool DataBlockIter::ParseNextDataKey(const char* limit) {
   uint32_t shared, non_shared, value_length;
   p = DecodeEntryFunc()(p, limit, &shared, &non_shared, &value_length);
   if (p == nullptr || raw_key_.Size() < shared) {
+    printf("datablockiter error\n");
     CorruptionError();
     return false;
   } else {
@@ -568,6 +569,7 @@ bool IndexBlockIter::ParseNextIndexKey() {
     p = DecodeEntry()(p, limit, &shared, &non_shared, &value_length);
   }
   if (p == nullptr || raw_key_.Size() < shared) {
+    printf("parsenext error\n");
     CorruptionError();
     return false;
   }
@@ -608,7 +610,8 @@ bool IndexBlockIter::ParseNextIndexKey() {
 void IndexBlockIter::DecodeCurrentValue(uint32_t shared) {
   Slice v(value_.data(), data_ + restarts_ - value_.data());
   // Delta encoding is used if `shared` != 0.
-  Status decode_s __attribute__((__unused__)) = decoded_value_.DecodeFrom(
+  Status decode_s __attribute__((__unused__)) = decoded_value_.DecodeFromWithAllIndex(
+  //Status decode_s __attribute__((__unused__)) = decoded_value_.DecodeFrom(
       &v, have_first_key_,
       (value_delta_encoded_ && shared) ? &decoded_value_.handle : nullptr);
   assert(decode_s.ok());
@@ -711,6 +714,7 @@ bool BlockIter<TValue>::BinarySeek(const Slice& target, uint32_t* index,
     const char* key_ptr = DecodeKeyFunc()(
         data_ + region_offset, data_ + restarts_, &shared, &non_shared);
     if (key_ptr == nullptr || (shared != 0)) {
+      printf("binaryseek error\n");
       CorruptionError();
       return false;
     }
@@ -754,6 +758,7 @@ int IndexBlockIter::CompareBlockKey(uint32_t block_index, const Slice& target) {
           : DecodeKey()(data_ + region_offset, data_ + restarts_, &shared,
                         &non_shared);
   if (key_ptr == nullptr || (shared != 0)) {
+    printf("compareblockkey error\n");
     CorruptionError();
     return 1;  // Return target is smaller
   }

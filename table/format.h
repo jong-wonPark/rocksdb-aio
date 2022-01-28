@@ -93,12 +93,20 @@ struct IndexValue {
   // Empty means unknown.
   Slice first_internal_key;
   uint32_t key_num;
+  std::vector<uint32_t> key_offset;
+  Slice key_buffer;
 
   IndexValue() = default;
   IndexValue(BlockHandle _handle, Slice _first_internal_key)
-      : handle(_handle), first_internal_key(_first_internal_key), key_num(0) {}
+      : handle(_handle), first_internal_key(_first_internal_key), key_num(0) {
+        key_offset.clear();
+	key_offset.push_back(0);
+      }
   IndexValue(BlockHandle _handle, Slice _first_internal_key, uint32_t key_num_)
-      : handle(_handle), first_internal_key(_first_internal_key), key_num(key_num_) {}
+      : handle(_handle), first_internal_key(_first_internal_key), key_num(key_num_) {
+        key_offset.clear();
+        key_offset.push_back(0);
+      }
 
   // have_first_key indicates whether the `first_internal_key` is used.
   // If previous_handle is not null, delta encoding is used;
@@ -108,6 +116,12 @@ struct IndexValue {
   void EncodeTo(std::string* dst, bool have_first_key,
                 const BlockHandle* previous_handle) const;
   Status DecodeFrom(Slice* input, bool have_first_key,
+                    const BlockHandle* previous_handle);
+
+  void EncodeToWithAllIndex(std::string* dst, bool have_first_key,
+                const BlockHandle* previous_handle,
+		std::vector<uint32_t>& key_offset, std::string* key_buffer) const;
+  Status DecodeFromWithAllIndex(Slice* input, bool have_first_key,
                     const BlockHandle* previous_handle);
 
   std::string ToString(bool hex, bool have_first_key) const;

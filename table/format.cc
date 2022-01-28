@@ -105,8 +105,6 @@ void IndexValue::EncodeTo(std::string* dst, bool have_first_key,
   if (have_first_key) {
     PutLengthPrefixedSlice(dst, first_internal_key);
   }
-
-  PutVarint32(dst, key_num);
 }
 
 Status IndexValue::DecodeFrom(Slice* input, bool have_first_key,
@@ -132,11 +130,96 @@ Status IndexValue::DecodeFrom(Slice* input, bool have_first_key,
     return Status::Corruption("bad first key in block info");
   }
 
+  return Status::OK();
+}
+
+void IndexValue::EncodeToWithAllIndex(std::string* dst, bool have_first_key,
+                          const BlockHandle* previous_handle,
+			  std::vector<uint32_t>& key_offset_, std::string* key_buffer_) const {
+/*  unsigned long lo, hi, lo2, hi2, lo3, hi3;
+  unsigned long long oper_start, oper_mid, oper_end;
+  unsigned long long second1, second2;
+  asm volatile("rdtsc" : "=a" (lo), "=d" (hi));*/
+  if (previous_handle) {
+    assert(handle.offset() == previous_handle->offset() +
+                                  previous_handle->size() + kBlockTrailerSize);
+    PutVarsignedint64(dst, handle.size() - previous_handle->size());
+  } else {
+    handle.EncodeTo(dst);
+  }
+  assert(dst->size() != 0);
+
+  if (have_first_key) {
+    PutLengthPrefixedSlice(dst, first_internal_key);
+  }
+//  asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
+  PutVarint32(dst, key_num);
+
+  if (key_num > 1) {
+    for(uint32_t i = 1; i < key_num; i++) {
+      PutVarint32(dst, key_offset_[i]);
+    }
+    dst->append(*key_buffer_, 0, key_offset_[key_num - 1]);
+  }
+/*  asm volatile("rdtsc" : "=a" (lo3), "=d" (hi3));
+  oper_start = ((unsigned long long)hi << 32) | lo;
+  oper_mid = ((unsigned long long)hi2 << 32) | lo2;
+  oper_end = ((unsigned long long)hi3 << 32) | lo3;
+  second1 = (oper_mid - oper_start);// * 5 / 13000;
+  second2 = (oper_end - oper_mid);// * 5 / 13000;
+  if (false){ printf("Encode:%llu,%llu\n",second1,second2); }*/
+}
+
+Status IndexValue::DecodeFromWithAllIndex(Slice* input, bool have_first_key,
+                              const BlockHandle* previous_handle) {
+/*  unsigned long lo, hi, lo2, hi2, lo3, hi3;
+  unsigned long long oper_start, oper_mid, oper_end;
+  unsigned long long second1, second2;
+  asm volatile("rdtsc" : "=a" (lo), "=d" (hi));*/
+  if (previous_handle) {
+    int64_t delta;
+    if (!GetVarsignedint64(input, &delta)) {
+      return Status::Corruption("bad delta-encoded index value");
+    }
+    handle = BlockHandle(
+        previous_handle->offset() + previous_handle->size() + kBlockTrailerSize,
+        previous_handle->size() + delta);
+  } else {
+    Status s = handle.DecodeFrom(input);
+    if (!s.ok()) {
+      return s;
+    }
+  }
+
+  if (!have_first_key) {
+    first_internal_key = Slice();
+  } else if (!GetLengthPrefixedSlice(input, &first_internal_key)) {
+    return Status::Corruption("bad first key in block info");
+  }
+
+//  asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
   if (!GetVarint32(input, &key_num)) {
     return Status::Corruption("bad key_num index value");
   }
 
-  //printf("decode %u\n",key_num);
+  uint32_t temp_int = 0;
+  if (key_num > 1) {
+    for(uint32_t i = 0; i < key_num - 1; i++){
+      if (!GetVarint32(input, &temp_int)) {
+        return Status::Corruption("bad key_offset index value");
+      }
+      key_offset.push_back(temp_int);
+    }
+    key_buffer = Slice(input->data(), key_offset.back());
+    input->remove_prefix(key_offset.back());
+  }
+/*  asm volatile("rdtsc" : "=a" (lo3), "=d" (hi3));
+  oper_start = ((unsigned long long)hi << 32) | lo;
+  oper_mid = ((unsigned long long)hi2 << 32) | lo2;
+  oper_end = ((unsigned long long)hi3 << 32) | lo3;
+  second1 = (oper_mid - oper_start);// * 5 / 13000;
+  second2 = (oper_end - oper_mid);// * 5 / 13000;
+  printf("decode:%llu,%llu\n",second1,second2);*/
 
   return Status::OK();
 }
