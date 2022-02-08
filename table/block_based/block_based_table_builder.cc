@@ -935,7 +935,9 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
         }
       }
     }
-    r->index_builder->AddKeyNum(ExtractUserKey(key));
+    if (r->level_at_creation < 4) {
+      r->index_builder->AddKeyNum(ExtractUserKey(key));
+    }
 
     // Note: PartitionedFilterBlockBuilder requires key being added to filter
     // builder after being added to index builder.

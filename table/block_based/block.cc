@@ -614,6 +614,7 @@ void IndexBlockIter::DecodeCurrentValue(uint32_t shared) {
   //Status decode_s __attribute__((__unused__)) = decoded_value_.DecodeFrom(
       &v, have_first_key_,
       (value_delta_encoded_ && shared) ? &decoded_value_.handle : nullptr);
+  decoded_value_.find_at_first = find_at_first;
   assert(decode_s.ok());
   value_ = Slice(value_.data(), v.data() - value_.data());
 
@@ -714,7 +715,7 @@ bool BlockIter<TValue>::BinarySeek(const Slice& target, uint32_t* index,
     const char* key_ptr = DecodeKeyFunc()(
         data_ + region_offset, data_ + restarts_, &shared, &non_shared);
     if (key_ptr == nullptr || (shared != 0)) {
-      printf("binaryseek error\n");
+      //printf("binaryseek error\n");
       CorruptionError();
       return false;
     }
@@ -731,6 +732,7 @@ bool BlockIter<TValue>::BinarySeek(const Slice& target, uint32_t* index,
       right = mid - 1;
     } else {
       *skip_linear_scan = true;
+      find_at_first = true;
       left = right = mid;
     }
   }

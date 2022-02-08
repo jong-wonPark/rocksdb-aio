@@ -2425,6 +2425,16 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
         break;
       }
 
+      if (v.key_num > 1 && v.find_at_first == false){
+        uint32_t index_iter;
+        for (index_iter = 1; index_iter < v.key_num; index_iter++){
+          Slice parse_key = Slice(v.key_buffer.data() + 24 * (index_iter - 1), 24);
+          if (UserComparatorWrapper(rep_->internal_comparator.user_comparator())
+                  .CompareWithoutTimestamp(ExtractUserKey(key), parse_key) == 0) { break; }
+        }
+        if (index_iter == v.key_num) { break; }
+      }
+
       BlockCacheLookupContext lookup_data_block_context{
           TableReaderCaller::kUserGet, tracing_get_id,
           /*get_from_user_specified_snapshot=*/read_options.snapshot !=

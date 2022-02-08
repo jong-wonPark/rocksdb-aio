@@ -184,8 +184,8 @@ class ShortenedIndexBuilder : public IndexBuilder {
                        key_offset, &key_buffer);
     //entry.EncodeTo(&encoded_entry, include_first_key_, nullptr);
     if (use_value_delta_encoding_ && !last_encoded_handle_.IsNull()) {
-      entry.EncodeToWithAllIndex(&delta_encoded_entry, include_first_key_,
-                     &last_encoded_handle_, key_offset, &key_buffer);
+      entry.EncodeToWithAllIndex(&delta_encoded_entry, include_first_key_, &last_encoded_handle_,
+                     key_offset, &key_buffer);
       //entry.EncodeTo(&delta_encoded_entry, include_first_key_,
       //               &last_encoded_handle_);
     } else {
@@ -232,6 +232,7 @@ class ShortenedIndexBuilder : public IndexBuilder {
   virtual void AddKeyNum(const Slice& key) {
     key_num++;
     key_buffer.append(key.data(), key.size());
+    if (UNLIKELY(key.size() != 24)) {printf("key size: %lu\n",key.size());}
     key_offset.push_back(key_offset.back()+static_cast<uint32_t>(key.size()));
   }
   virtual void setKeyNum(uint32_t key_num_) { key_num = key_num_; }

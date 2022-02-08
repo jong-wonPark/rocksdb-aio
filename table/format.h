@@ -95,17 +95,20 @@ struct IndexValue {
   uint32_t key_num;
   std::vector<uint32_t> key_offset;
   Slice key_buffer;
+  bool find_at_first;
 
   IndexValue() = default;
   IndexValue(BlockHandle _handle, Slice _first_internal_key)
       : handle(_handle), first_internal_key(_first_internal_key), key_num(0) {
         key_offset.clear();
 	key_offset.push_back(0);
+	find_at_first = false;
       }
   IndexValue(BlockHandle _handle, Slice _first_internal_key, uint32_t key_num_)
       : handle(_handle), first_internal_key(_first_internal_key), key_num(key_num_) {
         key_offset.clear();
         key_offset.push_back(0);
+	find_at_first = false;
       }
 
   // have_first_key indicates whether the `first_internal_key` is used.

@@ -470,6 +470,7 @@ class BlockIter : public InternalIteratorBase<TValue> {
 
   void FindKeyAfterBinarySeek(const Slice& target, uint32_t index,
                               bool is_index_key_result);
+  bool find_at_first;
 };
 
 class DataBlockIter final : public BlockIter<Slice> {
@@ -610,6 +611,7 @@ class IndexBlockIter final : public BlockIter<IndexValue> {
     prefix_index_ = prefix_index;
     value_delta_encoded_ = !value_is_full;
     have_first_key_ = have_first_key;
+    find_at_first = false;
     if (have_first_key_ && global_seqno != kDisableGlobalSequenceNumber) {
       global_seqno_state_.reset(new GlobalSeqnoState(global_seqno));
     } else {
@@ -632,6 +634,7 @@ class IndexBlockIter final : public BlockIter<IndexValue> {
       Status decode_s __attribute__((__unused__)) =
           entry.DecodeFromWithAllIndex(&v, have_first_key_, nullptr);
 	  //entry.DecodeFrom(&v, have_first_key_, nullptr);
+      entry.find_at_first = find_at_first;
       assert(decode_s.ok());
       return entry;
     }

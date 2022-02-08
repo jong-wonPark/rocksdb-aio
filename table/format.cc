@@ -154,12 +154,15 @@ void IndexValue::EncodeToWithAllIndex(std::string* dst, bool have_first_key,
   }
 //  asm volatile("rdtsc" : "=a" (lo2), "=d" (hi2));
   PutVarint32(dst, key_num);
-
+  
   if (key_num > 1) {
+    if(false){
     for(uint32_t i = 1; i < key_num; i++) {
       PutVarint32(dst, key_offset_[i]);
     }
-    dst->append(*key_buffer_, 0, key_offset_[key_num - 1]);
+    }
+    
+    dst->append(*key_buffer_, 0, (key_num - 1) * 24);
   }
 /*  asm volatile("rdtsc" : "=a" (lo3), "=d" (hi3));
   oper_start = ((unsigned long long)hi << 32) | lo;
@@ -201,17 +204,19 @@ Status IndexValue::DecodeFromWithAllIndex(Slice* input, bool have_first_key,
   if (!GetVarint32(input, &key_num)) {
     return Status::Corruption("bad key_num index value");
   }
-
+  
   uint32_t temp_int = 0;
   if (key_num > 1) {
+    if(false){
     for(uint32_t i = 0; i < key_num - 1; i++){
       if (!GetVarint32(input, &temp_int)) {
         return Status::Corruption("bad key_offset index value");
       }
       key_offset.push_back(temp_int);
     }
-    key_buffer = Slice(input->data(), key_offset.back());
-    input->remove_prefix(key_offset.back());
+    }
+    key_buffer = Slice(input->data(), (key_num - 1) * 24);
+    input->remove_prefix((key_num - 1) * 24);
   }
 /*  asm volatile("rdtsc" : "=a" (lo3), "=d" (hi3));
   oper_start = ((unsigned long long)hi << 32) | lo;
