@@ -1966,7 +1966,8 @@ void Version::Get(const ReadOptions& read_options, const LookupKey& k,
         oper_end = ((unsigned long long)hi2 << 32) | lo2;
         unsigned long long nano_sec = (oper_end - oper_start) * 5 / 14;
         int cur_tid = gettid();
-        if (false && cur_tid%16 == 0){printf("RD,%d,%u,%llu\n",file_count,fp.GetHitFileLevel(),nano_sec);}
+        if (false && cur_tid%8 == 0){printf("RD,%d,%u,%llu\n",file_count,fp.GetHitFileLevel(),nano_sec);}
+	//if (cur_tid%8 == 0) {printf("\n");}
 
         PERF_COUNTER_BY_LEVEL_ADD(user_key_return_count, 1,
                                   fp.GetHitFileLevel());

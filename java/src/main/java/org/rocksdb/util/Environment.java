@@ -71,8 +71,6 @@ public class Environment {
   }
 
   public static String getSharedLibraryName(final String name) {
-    System.out.println("hereprint");
-    System.out.println(name);
     return name + "jni";
   }
 

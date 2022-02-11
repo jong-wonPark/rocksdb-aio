@@ -1499,6 +1499,7 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache(
         // TODO(haoyu): Differentiate cache hit on uncompressed block cache and
         // compressed block cache.
         is_cache_hit = true;
+	lookup_context->is_cache_hit = true;
       }
     }
 
@@ -2390,8 +2391,14 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
         rep_->internal_comparator.user_comparator()->timestamp_size();
     bool matched = false;  // if such user key matched a key in SST
     bool done = false;
-    asm volatile("rdtsc" : "=a" (lo_mid4), "=d" (hi_mid4));
+    //asm volatile("rdtsc" : "=a" (lo_mid4), "=d" (hi_mid4));
     for (iiter->Seek(key); iiter->Valid() && !done; iiter->Next()) {
+      /*asm volatile("rdtsc" : "=a" (lo_mid1), "=d" (hi_mid1));
+      oper_mid4 = ((unsigned long long)hi_mid4 << 32) | lo_mid4;
+      oper_mid1 = ((unsigned long long)hi_mid1 << 32) | lo_mid1;
+      nano_sec_mid2 = (oper_mid1 - oper_mid4) * 5 / 13;
+      if (cur_tid%8 == 0) {printf(",%llu",nano_sec_mid2);}*/
+
       if (for_count1 == 1)
         break;
       for_count1 += 1;
@@ -2443,7 +2450,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
       DataBlockIter biter;
       uint64_t referenced_data_size = 0;
 
-      asm volatile("rdtsc" : "=a" (lo_mid1), "=d" (hi_mid1));
+      //asm volatile("rdtsc" : "=a" (lo_mid1), "=d" (hi_mid1));
       NewDataBlockIterator<DataBlockIter>(
           read_options, v.handle, &biter, BlockType::kData, get_context,
           &lookup_data_block_context,
@@ -2526,6 +2533,13 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
             .PermitUncheckedError();
       }
 
+      /*if (cur_tid%8 == 0) {
+        if (lookup_data_block_context.is_cache_hit)
+          printf(",h");
+        else
+          printf(",m");
+      }*/
+
       if (done) {
         // Avoid the extra Next which is expensive in two-level indexes
         break;
@@ -2591,6 +2605,7 @@ Status BlockBasedTable::Get_aio(const ReadOptions& read_options, const Slice& ke
   if (!may_match) {
     RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
     PERF_COUNTER_BY_LEVEL_ADD(bloom_filter_useful, 1, rep_->level);
+    *cache_miss = false;
   } else {
     IndexBlockIter iiter_on_stack;
     // if prefix_extractor found in block differs from options, disable
@@ -2629,6 +2644,7 @@ Status BlockBasedTable::Get_aio(const ReadOptions& read_options, const Slice& ke
         // cross one data block, we should be fine.
         RecordTick(rep_->ioptions.statistics, BLOOM_FILTER_USEFUL);
         PERF_COUNTER_BY_LEVEL_ADD(bloom_filter_useful, 1, rep_->level);
+	*cache_miss = false;
         break;
       }
 
