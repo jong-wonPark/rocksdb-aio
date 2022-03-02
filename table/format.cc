@@ -204,12 +204,12 @@ Status IndexValue::DecodeFromWithAllIndex(Slice* input, bool have_first_key,
   if (!GetVarint32(input, &key_num)) {
     return Status::Corruption("bad key_num index value");
   }
-  
+
   uint32_t temp_int = 0;
   if (key_num > 1) {
     if(false){
     for(uint32_t i = 0; i < key_num - 1; i++){
-      if (!GetVarint32(input, &temp_int)) {
+       if (!GetVarint32(input, &temp_int)) {
         return Status::Corruption("bad key_offset index value");
       }
       key_offset.push_back(temp_int);

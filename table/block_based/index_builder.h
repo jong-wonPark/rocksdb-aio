@@ -207,6 +207,58 @@ class ShortenedIndexBuilder : public IndexBuilder {
     key_offset.push_back(0);
   }
 
+  virtual void AddIndexEntryWithAllIndex(std::string* last_key_in_current_block,
+                             const Slice* first_key_in_next_block,
+                             const BlockHandle& block_handle, uint32_t key_num_,
+			     std::vector<uint32_t>& key_offset_,
+			     std::string* key_buffer_) {
+    if (first_key_in_next_block != nullptr) {
+      if (shortening_mode_ !=
+          BlockBasedTableOptions::IndexShorteningMode::kNoShortening) {
+        comparator_->FindShortestSeparator(last_key_in_current_block,
+                                           *first_key_in_next_block);
+      }
+      if (!seperator_is_key_plus_seq_ &&
+          comparator_->user_comparator()->Compare(
+              ExtractUserKey(*last_key_in_current_block),
+              ExtractUserKey(*first_key_in_next_block)) == 0) {
+        seperator_is_key_plus_seq_ = true;
+      }
+    } else {
+      if (shortening_mode_ == BlockBasedTableOptions::IndexShorteningMode::
+                                  kShortenSeparatorsAndSuccessor) {
+        comparator_->FindShortSuccessor(last_key_in_current_block);
+      }
+    }
+    auto sep = Slice(*last_key_in_current_block);
+
+    assert(!include_first_key_ || !current_block_first_internal_key_.empty());
+    IndexValue entry(block_handle, current_block_first_internal_key_, key_num_);
+    std::string encoded_entry;
+    std::string delta_encoded_entry;
+    entry.EncodeToWithAllIndex(&encoded_entry, include_first_key_, nullptr,
+                       key_offset_, key_buffer_);
+    //entry.EncodeTo(&encoded_entry, include_first_key_, nullptr);
+    if (use_value_delta_encoding_ && !last_encoded_handle_.IsNull()) {
+      entry.EncodeToWithAllIndex(&delta_encoded_entry, include_first_key_, &last_encoded_handle_,
+                     key_offset_, key_buffer_);
+      //entry.EncodeTo(&delta_encoded_entry, include_first_key_,
+      //               &last_encoded_handle_);
+    } else {
+      // If it's the first block, or delta encoding is disabled,
+      // BlockBuilder::Add() below won't use delta-encoded slice.
+    }
+    last_encoded_handle_ = block_handle;
+    const Slice delta_encoded_entry_slice(delta_encoded_entry);
+    index_block_builder_.Add(sep, encoded_entry, &delta_encoded_entry_slice);
+    if (!seperator_is_key_plus_seq_) {
+      index_block_builder_without_seq_.Add(ExtractUserKey(sep), encoded_entry,
+                                           &delta_encoded_entry_slice);
+    }
+
+    current_block_first_internal_key_.clear();
+  }
+
   using IndexBuilder::Finish;
   virtual Status Finish(
       IndexBlocks* index_blocks,

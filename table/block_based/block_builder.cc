@@ -198,4 +198,68 @@ void BlockBuilder::Add(const Slice& key, const Slice& value,
   estimate_ += buffer_.size() - curr_size;
 }
 
+void BlockBuilder::AddWithZero(const Slice& key, const Slice& value,
+                       const Slice* const delta_value) {
+  assert(!finished_);
+  assert(counter_ <= block_restart_interval_);
+  assert(!use_value_delta_encoding_ || delta_value);
+  size_t shared = 0;  // number of bytes shared with prev key
+  if (counter_ >= block_restart_interval_) {
+    // Restart compression
+    restarts_.push_back(static_cast<uint32_t>(buffer_.size()));
+    estimate_ += sizeof(uint32_t);
+    counter_ = 0;
+
+    if (use_delta_encoding_) {
+      // Update state
+      last_key_.assign(key.data(), key.size());
+    }
+  } else if (use_delta_encoding_) {
+    Slice last_key_piece(last_key_);
+    // See how much sharing to do with previous string
+    shared = key.difference_offset(last_key_piece);
+
+    // Update state
+    // We used to just copy the changed data here, but it appears to be
+    // faster to just copy the whole thing.
+    last_key_.assign(key.data(), key.size());
+  }
+
+  const size_t non_shared = key.size() - shared;
+  const size_t curr_size = buffer_.size();
+
+  if (use_value_delta_encoding_) {
+    // Add "<shared><non_shared>" to buffer_
+    PutVarint32Varint32(&buffer_, static_cast<uint32_t>(shared),
+                        static_cast<uint32_t>(non_shared));
+  } else {
+    // Add "<shared><non_shared><value_size>" to buffer_
+    PutVarint32Varint32Varint32(&buffer_, static_cast<uint32_t>(shared),
+                                static_cast<uint32_t>(non_shared),
+                                static_cast<uint32_t>(value.size()));
+  }
+
+  // Add string delta to buffer_ followed by value
+  buffer_.append(key.data() + shared, non_shared);
+  // Use value delta encoding only when the key has shared bytes. This would
+  // simplify the decoding, where it can figure which decoding to use simply by
+  // looking at the shared bytes size.
+  if (shared != 0 && use_value_delta_encoding_) {
+    buffer_.append(delta_value->data(), delta_value->size());
+  } else {
+    buffer_.append(value.data(), value.size());
+  }
+
+  PutVarint32(&buffer_, 0);
+
+  if (data_block_hash_index_builder_.Valid()) {
+    data_block_hash_index_builder_.Add(ExtractUserKey(key),
+                                       restarts_.size() - 1);
+  }
+
+  counter_++;
+  estimate_ += buffer_.size() - curr_size;
+}
+
+
 }  // namespace ROCKSDB_NAMESPACE

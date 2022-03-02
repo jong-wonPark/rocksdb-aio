@@ -97,7 +97,11 @@ PartitionedIndexBuilder::PartitionedIndexBuilder(
       // sub_index_builders could not safely exclude seq from the keys, then it
       // wil be enforced on all sub_index_builders on ::Finish.
       seperator_is_key_plus_seq_(false),
-      use_value_delta_encoding_(use_value_delta_encoding) {}
+      use_value_delta_encoding_(use_value_delta_encoding) {
+  key_offset.clear();
+  key_offset.push_back(0);
+  key_buffer.clear();
+}
 
 PartitionedIndexBuilder::~PartitionedIndexBuilder() {
   delete sub_index_builder_;
@@ -141,8 +145,9 @@ void PartitionedIndexBuilder::AddIndexEntry(
     if (sub_index_builder_ == nullptr) {
       MakeNewSubIndexBuilder();
     }
-    sub_index_builder_->AddIndexEntry(last_key_in_current_block,
-                                      first_key_in_next_block, block_handle);
+    sub_index_builder_->AddIndexEntryWithAllIndex(last_key_in_current_block,
+                                      first_key_in_next_block, block_handle,
+				      key_num, key_offset, &key_buffer);
     if (!seperator_is_key_plus_seq_ &&
         sub_index_builder_->seperator_is_key_plus_seq_) {
       // then we need to apply it to all sub-index builders and reset
@@ -178,8 +183,9 @@ void PartitionedIndexBuilder::AddIndexEntry(
     if (sub_index_builder_ == nullptr) {
       MakeNewSubIndexBuilder();
     }
-    sub_index_builder_->AddIndexEntry(last_key_in_current_block,
-                                      first_key_in_next_block, block_handle);
+    sub_index_builder_->AddIndexEntryWithAllIndex(last_key_in_current_block,
+                                      first_key_in_next_block, block_handle,
+				      key_num, key_offset, &key_buffer);
     sub_index_last_key_ = std::string(*last_key_in_current_block);
     if (!seperator_is_key_plus_seq_ &&
         sub_index_builder_->seperator_is_key_plus_seq_) {
@@ -192,6 +198,10 @@ void PartitionedIndexBuilder::AddIndexEntry(
           sub_index_builder_->index_block_builder_));
     }
   }
+  key_num = 0;
+  key_buffer.clear();
+  key_offset.clear();
+  key_offset.push_back(0);
 }
 
 Status PartitionedIndexBuilder::Finish(
@@ -211,10 +221,10 @@ Status PartitionedIndexBuilder::Finish(
         last_partition_block_handle.size() - last_encoded_handle_.size());
     last_encoded_handle_ = last_partition_block_handle;
     const Slice handle_delta_encoding_slice(handle_delta_encoding);
-    index_block_builder_.Add(last_entry.key, handle_encoding,
+    index_block_builder_.AddWithZero(last_entry.key, handle_encoding,
                              &handle_delta_encoding_slice);
     if (!seperator_is_key_plus_seq_) {
-      index_block_builder_without_seq_.Add(ExtractUserKey(last_entry.key),
+      index_block_builder_without_seq_.AddWithZero(ExtractUserKey(last_entry.key),
                                            handle_encoding,
                                            &handle_delta_encoding_slice);
     }

@@ -1094,7 +1094,6 @@ Status BlockBasedTable::PrefetchIndexAndFilterBlocks(
 
     rep_->uncompression_dict_reader = std::move(uncompression_dict_reader);
   }
-
   assert(s.ok());
   return s;
 }
@@ -2377,6 +2376,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
       need_upper_bound_check = PrefixExtractorChanged(
           rep_->table_properties.get(), prefix_extractor);
     }
+    if(cur_tid%8 == 0) {printf("IL\n");}
     asm volatile("rdtsc" : "=a" (lo_mid3), "=d" (hi_mid3));
     auto iiter =
         NewIndexIterator(read_options, need_upper_bound_check, &iiter_on_stack,
@@ -2434,6 +2434,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
         }
         if (index_iter == v.key_num) { break; }
       }
+
 
       BlockCacheLookupContext lookup_data_block_context{
           TableReaderCaller::kUserGet, tracing_get_id,

@@ -135,7 +135,6 @@ Status PartitionIndexReader::CacheDependencies(const ReadOptions& ro,
   }
   handle = biter.value().handle;
   uint64_t prefetch_off = handle.offset();
-
   // Read the last block's offset
   biter.SeekToLast();
   if (!biter.Valid()) {

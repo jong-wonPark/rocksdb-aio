@@ -40,6 +40,9 @@ class BlockBuilder {
   void Add(const Slice& key, const Slice& value,
            const Slice* const delta_value = nullptr);
 
+  void AddWithZero(const Slice& key, const Slice& value,
+           const Slice* const delta_value = nullptr);
+
   // Finish building the block and return a slice that refers to the
   // block contents.  The returned slice will remain valid for the
   // lifetime of this builder or until Reset() is called.
