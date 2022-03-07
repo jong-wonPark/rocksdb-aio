@@ -157,28 +157,31 @@ Status PartitionIndexReader::CacheDependencies(const ReadOptions& ro,
   }
 
   // After prefetch, read the partitions one by one
-  biter.SeekToFirst();
-  for (; biter.Valid(); biter.Next()) {
-    handle = biter.value().handle;
-    CachableEntry<Block> block;
-    // TODO: Support counter batch update for partitioned index and
-    // filter blocks
-    s = table()->MaybeReadBlockAndLoadToCache(
-        prefetch_buffer.get(), ro, handle, UncompressionDict::GetEmptyDict(),
-        &block, BlockType::kIndex, /*get_context=*/nullptr, &lookup_context,
-        /*contents=*/nullptr);
+  if (false){
+    biter.SeekToFirst();
+    for (; biter.Valid(); biter.Next()) {
+      handle = biter.value().handle;
+      CachableEntry<Block> block;
+      // TODO: Support counter batch update for partitioned index and
+      // filter blocks
+      s = table()->MaybeReadBlockAndLoadToCache(
+          prefetch_buffer.get(), ro, handle, UncompressionDict::GetEmptyDict(),
+          &block, BlockType::kIndex, nullptr, //get_context=
+          &lookup_context, nullptr); //contents=
 
-    if (!s.ok()) {
-      return s;
-    }
-    if (block.GetValue() != nullptr) {
-      if (block.IsCached() || block.GetOwnValue()) {
-        if (pin) {
-          partition_map_[handle.offset()] = std::move(block);
+      if (!s.ok()) {
+        return s;
+      }
+      if (block.GetValue() != nullptr) {
+        if (block.IsCached() || block.GetOwnValue()) {
+          if (pin) {
+            partition_map_[handle.offset()] = std::move(block);
+          }
         }
       }
     }
   }
+
   return biter.status();
 }
 

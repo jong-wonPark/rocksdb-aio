@@ -21,7 +21,7 @@ package org.rocksdb;
 public class BloomFilter extends Filter {
 
   private static final double DEFAULT_BITS_PER_KEY = 10.0;
-  private static final boolean DEFAULT_MODE = true;
+  private static final boolean DEFAULT_MODE = false;
 
   /**
    * BloomFilter constructor

@@ -244,6 +244,13 @@ class BlockBasedTable : public TableReader {
       FilePrefetchBuffer* prefetch_buffer, bool for_compaction = false) const;
 
   template <typename TBlockIter>
+  TBlockIter* NewDataBlockIteratorNoCache(
+      const ReadOptions& ro, const BlockHandle& block_handle,
+      TBlockIter* input_iter, BlockType block_type, GetContext* get_context,
+      BlockCacheLookupContext* lookup_context, Status s,
+      FilePrefetchBuffer* prefetch_buffer, bool for_compaction = false) const;
+
+  template <typename TBlockIter>
   TBlockIter* NewDataBlockIterator_aio(
       const ReadOptions& ro, const BlockHandle& block_handle,
       TBlockIter* input_iter, BlockType block_type, GetContext* get_context,
@@ -566,7 +573,9 @@ struct BlockBasedTable::Rep {
       : ioptions(_ioptions),
         env_options(_env_options),
         table_options(_table_opt),
-        filter_policy(skip_filters ? nullptr : _table_opt.filter_policy.get()),
+	// Level detection
+	filter_policy(skip_filters ? nullptr : _table_opt.filter_policy.get()),
+        //filter_policy((skip_filters || _level > 2) ? nullptr : _table_opt.filter_policy.get()),
         internal_comparator(_internal_comparator),
         filter_type(FilterType::kNoFilter),
         index_type(BlockBasedTableOptions::IndexType::kBinarySearch),

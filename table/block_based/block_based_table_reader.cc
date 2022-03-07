@@ -687,6 +687,8 @@ Status BlockBasedTable::Open(
   // such as index_type.
   s = new_table->ReadPropertiesBlock(ro, prefetch_buffer.get(),
                                      metaindex_iter.get(), largest_seqno);
+  // Level detection
+  if (level < 3) {rep->index_type = BlockBasedTableOptions::kBinarySearch;}
   if (!s.ok()) {
     return s;
   }
@@ -2376,7 +2378,6 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
       need_upper_bound_check = PrefixExtractorChanged(
           rep_->table_properties.get(), prefix_extractor);
     }
-    if(cur_tid%8 == 0) {printf("IL\n");}
     asm volatile("rdtsc" : "=a" (lo_mid3), "=d" (hi_mid3));
     auto iiter =
         NewIndexIterator(read_options, need_upper_bound_check, &iiter_on_stack,

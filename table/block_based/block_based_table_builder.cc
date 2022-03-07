@@ -476,7 +476,11 @@ struct BlockBasedTableBuilder::Rep {
     for (uint32_t i = 0; i < compression_opts.parallel_threads; i++) {
       compression_ctxs[i].reset(new CompressionContext(compression_type));
     }
-    if (table_options.index_type ==
+    // Level detection
+    //BlockBasedTableOptions::IndexType index_type_ = table_options.index_type;
+    BlockBasedTableOptions::IndexType index_type_ = level_at_creation < 3 ?
+                BlockBasedTableOptions::kBinarySearch : BlockBasedTableOptions::kTwoLevelIndexSearch;
+    if (index_type_ ==
         BlockBasedTableOptions::kTwoLevelIndexSearch) {
       p_index_builder_ = PartitionedIndexBuilder::CreateIndexBuilder(
           &internal_comparator, use_delta_encoding_for_index_values,
@@ -484,11 +488,13 @@ struct BlockBasedTableBuilder::Rep {
       index_builder.reset(p_index_builder_);
     } else {
       index_builder.reset(IndexBuilder::CreateIndexBuilder(
-          table_options.index_type, &internal_comparator,
+          index_type_, &internal_comparator,
           &this->internal_prefix_transform, use_delta_encoding_for_index_values,
           table_options));
     }
-    if (skip_filters) {
+    // Level detection
+    if (skip_filters){
+    //if (skip_filters || level_at_creation > 2) {
       filter_builder = nullptr;
     } else {
       FilterBuildingContext context(table_options);
@@ -507,7 +513,7 @@ struct BlockBasedTableBuilder::Rep {
     }
     table_properties_collectors.emplace_back(
         new BlockBasedTablePropertiesCollector(
-            table_options.index_type, table_options.whole_key_filtering,
+            index_type_, table_options.whole_key_filtering,
             _moptions.prefix_extractor != nullptr));
     if (table_options.verify_compression) {
       for (uint32_t i = 0; i < compression_opts.parallel_threads; i++) {
@@ -935,7 +941,7 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
         }
       }
     }
-    //if (r->level_at_creation < 4) {
+    //if (r->level_at_creation == 3) {
     //  r->index_builder->AddKeyNum(ExtractUserKey(key));
     //}
 
@@ -1560,7 +1566,11 @@ void BlockBasedTableBuilder::WritePropertiesBlock(
     }
     property_collectors_names += "]";
     rep_->props.property_collectors_names = property_collectors_names;
-    if (rep_->table_options.index_type ==
+    // Level detection
+    //BlockBasedTableOptions::IndexType index_type_ = rep_->table_options.index_type;
+    BlockBasedTableOptions::IndexType index_type_ = rep_->level_at_creation < 3 ?
+            BlockBasedTableOptions::kBinarySearch : BlockBasedTableOptions::kTwoLevelIndexSearch;
+    if (index_type_ ==
         BlockBasedTableOptions::kTwoLevelIndexSearch) {
       assert(rep_->p_index_builder_ != nullptr);
       rep_->props.index_partitions = rep_->p_index_builder_->NumPartitions();
