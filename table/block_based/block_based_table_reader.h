@@ -574,8 +574,8 @@ struct BlockBasedTable::Rep {
         env_options(_env_options),
         table_options(_table_opt),
 	// Level detection
-	filter_policy(skip_filters ? nullptr : _table_opt.filter_policy.get()),
-        //filter_policy((skip_filters || _level > 2) ? nullptr : _table_opt.filter_policy.get()),
+	//filter_policy(skip_filters ? nullptr : _table_opt.filter_policy.get()),
+        filter_policy((skip_filters || _level > 2) ? nullptr : _table_opt.filter_policy.get()),
         internal_comparator(_internal_comparator),
         filter_type(FilterType::kNoFilter),
         index_type(BlockBasedTableOptions::IndexType::kBinarySearch),

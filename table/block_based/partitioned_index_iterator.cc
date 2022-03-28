@@ -94,8 +94,8 @@ void PartitionedIndexIterator::InitPartitionedIndexBlock() {
                                        is_for_compaction);
 
     Status s;
-    table_->NewDataBlockIteratorNoCache<IndexBlockIter>(
-    //table_->NewDataBlockIterator<IndexBlockIter>(
+    //table_->NewDataBlockIteratorNoCache<IndexBlockIter>(
+    table_->NewDataBlockIterator<IndexBlockIter>(
         read_options_, partitioned_index_handle, &block_iter_,
         BlockType::kIndex,
         /*get_context=*/nullptr, &lookup_context_, s,

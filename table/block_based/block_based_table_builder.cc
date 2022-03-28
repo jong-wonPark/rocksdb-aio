@@ -493,8 +493,8 @@ struct BlockBasedTableBuilder::Rep {
           table_options));
     }
     // Level detection
-    if (skip_filters){
-    //if (skip_filters || level_at_creation > 2) {
+    //if (skip_filters){
+    if (skip_filters || level_at_creation > 2) {
       filter_builder = nullptr;
     } else {
       FilterBuildingContext context(table_options);
@@ -941,9 +941,9 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
         }
       }
     }
-    //if (r->level_at_creation == 3) {
-    //  r->index_builder->AddKeyNum(ExtractUserKey(key));
-    //}
+    if (r->level_at_creation == 3) {
+      r->index_builder->AddKeyNum(ExtractUserKey(key));
+    }
 
     // Note: PartitionedFilterBlockBuilder requires key being added to filter
     // builder after being added to index builder.
