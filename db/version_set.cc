@@ -3005,6 +3005,7 @@ void Version::MultiGet(const ReadOptions& read_options, MultiGetRange* range,
 bool Version::IsFilterSkipped(int level, bool is_file_last_in_level) {
   // Reaching the bottom level implies misses at all upper levels, so we'll
   // skip checking the filters when we predict a hit.
+  //if (gettid()%8==0){printf("N%d",storage_info_.num_non_empty_levels());}
   return cfd_->ioptions()->optimize_filters_for_hits &&
          (level > 0 || is_file_last_in_level) &&
          level == storage_info_.num_non_empty_levels() - 1;

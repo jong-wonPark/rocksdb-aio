@@ -688,7 +688,7 @@ Status BlockBasedTable::Open(
   s = new_table->ReadPropertiesBlock(ro, prefetch_buffer.get(),
                                      metaindex_iter.get(), largest_seqno);
   // Level detection
-  if (level < 3) {rep->index_type = BlockBasedTableOptions::kBinarySearch;}
+  //if (level < 4) {rep->index_type = BlockBasedTableOptions::kBinarySearch;}
   if (!s.ok()) {
     return s;
   }
@@ -1083,6 +1083,7 @@ Status BlockBasedTable::PrefetchIndexAndFilterBlocks(
       }
       rep_->filter = std::move(filter);
     }
+    //else{if(gettid()%8==0){printf("f,Level:%d\n",rep_->level);}}
   }
 
   if (!rep_->compression_dict_handle.IsNull()) {
@@ -1564,11 +1565,16 @@ Status BlockBasedTable::MaybeReadBlockAndLoadToCache(
         nano_sec_tocache = (oper_end - oper_start) * 5 / 14;
       }
     }
-    if (false && cur_tid%16 == 0){
-      if (block_type == BlockType::kData)
+    if (true && cur_tid%8 == 0){
+      if (false && block_type == BlockType::kData)
         printf("MRB-D,%d,%llu,%llu,%llu\n",is_cache_hit,nano_sec_fromcache, nano_sec_readcontents, nano_sec_tocache);
-      else if (block_type == BlockType::kIndex)
-        printf("MRB-I,%d,%llu,%llu,%llu\n",is_cache_hit,nano_sec_fromcache, nano_sec_readcontents, nano_sec_tocache);
+      if (block_type == BlockType::kIndex)
+        //printf("MRB-I,%d,%llu,%llu,%llu\n",is_cache_hit,nano_sec_fromcache, nano_sec_readcontents, nano_sec_tocache);
+	printf("I%d",is_cache_hit);
+      else if (block_type == BlockType::kFilter)
+        printf("F%d",is_cache_hit);
+      else if (block_type == BlockType::kData)
+        printf("D%d",is_cache_hit);
     }
   }
 
@@ -2348,6 +2354,12 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
   FilterBlockReader* const filter =
       !skip_filters ? rep_->filter.get() : nullptr;
 
+  if(cur_tid%8==0){
+    printf("L%d",rep_->level);
+    if(skip_filters){
+      printf("S");
+    }
+  }
   // First check the full filter
   // If full filter not useful, Then go into each block
   uint64_t tracing_get_id = get_context->get_tracing_get_id();
@@ -2426,7 +2438,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
         break;
       }
 
-      if (v.key_num > 1 && v.find_at_first == false){
+      /*if (v.key_num > 1 && v.find_at_first == false){
         uint32_t index_iter;
         for (index_iter = 1; index_iter < v.key_num; index_iter++){
           Slice parse_key = Slice(v.key_buffer.data() + 24 * (index_iter - 1), 24);
@@ -2434,7 +2446,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
                   .CompareWithoutTimestamp(ExtractUserKey(key), parse_key) == 0) { break; }
         }
         if (index_iter == v.key_num) { break; }
-      }
+      }*/
 
 
       BlockCacheLookupContext lookup_data_block_context{
@@ -2447,6 +2459,7 @@ Status BlockBasedTable::Get(const ReadOptions& read_options, const Slice& key,
 
       asm volatile("rdtsc" : "=a" (lo_mid1), "=d" (hi_mid1));
       NewDataBlockIterator<DataBlockIter>(
+      //NewDataBlockIteratorNoCache<DataBlockIter>(
           read_options, v.handle, &biter, BlockType::kData, get_context,
           &lookup_data_block_context,
           /*s=*/Status(), /*prefetch_buffer*/ nullptr);

@@ -65,7 +65,7 @@ FilterBlockBuilder* CreateFilterBlockBuilder(
     const bool use_delta_encoding_for_index_values,
     PartitionedIndexBuilder* const p_index_builder) {
   const BlockBasedTableOptions& table_opt = context.table_options;
-  if (table_opt.filter_policy == nullptr) return nullptr;
+  if (table_opt.filter_policy == nullptr) {return nullptr;}
 
   FilterBitsBuilder* filter_bits_builder =
       BloomFilterPolicy::GetBuilderFromContext(context);
@@ -477,9 +477,9 @@ struct BlockBasedTableBuilder::Rep {
       compression_ctxs[i].reset(new CompressionContext(compression_type));
     }
     // Level detection
-    //BlockBasedTableOptions::IndexType index_type_ = table_options.index_type;
-    BlockBasedTableOptions::IndexType index_type_ = level_at_creation < 3 ?
-                BlockBasedTableOptions::kBinarySearch : BlockBasedTableOptions::kTwoLevelIndexSearch;
+    BlockBasedTableOptions::IndexType index_type_ = table_options.index_type;
+    //BlockBasedTableOptions::IndexType index_type_ = level_at_creation < 4 ?
+    //            BlockBasedTableOptions::kBinarySearch : BlockBasedTableOptions::kTwoLevelIndexSearch;
     if (index_type_ ==
         BlockBasedTableOptions::kTwoLevelIndexSearch) {
       p_index_builder_ = PartitionedIndexBuilder::CreateIndexBuilder(
@@ -493,8 +493,8 @@ struct BlockBasedTableBuilder::Rep {
           table_options));
     }
     // Level detection
-    //if (skip_filters){
-    if (skip_filters || level_at_creation > 2) {
+    if (skip_filters){
+    //if ((skip_filters && false) || level_at_creation > 3) {
       filter_builder = nullptr;
     } else {
       FilterBuildingContext context(table_options);
@@ -941,9 +941,10 @@ void BlockBasedTableBuilder::Add(const Slice& key, const Slice& value) {
         }
       }
     }
-    if (r->level_at_creation == 3) {
-      r->index_builder->AddKeyNum(ExtractUserKey(key));
-    }
+    // Level detection
+    //if (r->level_at_creation == 3) {
+    //  r->index_builder->AddKeyNum(ExtractUserKey(key));
+    //}
 
     // Note: PartitionedFilterBlockBuilder requires key being added to filter
     // builder after being added to index builder.
@@ -1567,9 +1568,9 @@ void BlockBasedTableBuilder::WritePropertiesBlock(
     property_collectors_names += "]";
     rep_->props.property_collectors_names = property_collectors_names;
     // Level detection
-    //BlockBasedTableOptions::IndexType index_type_ = rep_->table_options.index_type;
-    BlockBasedTableOptions::IndexType index_type_ = rep_->level_at_creation < 3 ?
-            BlockBasedTableOptions::kBinarySearch : BlockBasedTableOptions::kTwoLevelIndexSearch;
+    BlockBasedTableOptions::IndexType index_type_ = rep_->table_options.index_type;
+    //BlockBasedTableOptions::IndexType index_type_ = rep_->level_at_creation < 4 ?
+    //        BlockBasedTableOptions::kBinarySearch : BlockBasedTableOptions::kTwoLevelIndexSearch;
     if (index_type_ ==
         BlockBasedTableOptions::kTwoLevelIndexSearch) {
       assert(rep_->p_index_builder_ != nullptr);

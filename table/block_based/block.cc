@@ -611,8 +611,8 @@ void IndexBlockIter::DecodeCurrentValue(uint32_t shared) {
   Slice v(value_.data(), data_ + restarts_ - value_.data());
   // Delta encoding is used if `shared` != 0.
   //printf("DCV1\n");
-  Status decode_s __attribute__((__unused__)) = decoded_value_.DecodeFromWithAllIndex(
-  //Status decode_s __attribute__((__unused__)) = decoded_value_.DecodeFrom(
+  //Status decode_s __attribute__((__unused__)) = decoded_value_.DecodeFromWithAllIndex(
+  Status decode_s __attribute__((__unused__)) = decoded_value_.DecodeFrom(
       &v, have_first_key_,
       (value_delta_encoded_ && shared) ? &decoded_value_.handle : nullptr);
   //printf("DCV2\n");

@@ -152,6 +152,12 @@ TBlockIter* BlockBasedTable::NewDataBlockIteratorNoCache(
   s = RetrieveBlock(prefetch_buffer, ro, handle, dict, &block, block_type,
                     get_context, lookup_context, for_compaction,
                     /* use_cache */ false);
+  if(gettid()%8==0){
+    if (block_type == BlockType::kData)
+      printf("D0");
+    else if (block_type == BlockType::kIndex)
+      printf("I0");
+  }
 
   if (!s.ok()) {
     assert(block.IsEmpty());

@@ -145,9 +145,12 @@ void PartitionedIndexBuilder::AddIndexEntry(
     if (sub_index_builder_ == nullptr) {
       MakeNewSubIndexBuilder();
     }
-    sub_index_builder_->AddIndexEntryWithAllIndex(last_key_in_current_block,
+    /*sub_index_builder_->AddIndexEntryWithAllIndex(last_key_in_current_block,
                                       first_key_in_next_block, block_handle,
 				      key_num, key_offset, &key_buffer);
+    */
+    sub_index_builder_->AddIndexEntry(last_key_in_current_block,
+                                      first_key_in_next_block, block_handle);
     if (!seperator_is_key_plus_seq_ &&
         sub_index_builder_->seperator_is_key_plus_seq_) {
       // then we need to apply it to all sub-index builders and reset
@@ -183,9 +186,12 @@ void PartitionedIndexBuilder::AddIndexEntry(
     if (sub_index_builder_ == nullptr) {
       MakeNewSubIndexBuilder();
     }
-    sub_index_builder_->AddIndexEntryWithAllIndex(last_key_in_current_block,
+    /*sub_index_builder_->AddIndexEntryWithAllIndex(last_key_in_current_block,
                                       first_key_in_next_block, block_handle,
 				      key_num, key_offset, &key_buffer);
+    */
+    sub_index_builder_->AddIndexEntry(last_key_in_current_block,
+                                      first_key_in_next_block, block_handle);
     sub_index_last_key_ = std::string(*last_key_in_current_block);
     if (!seperator_is_key_plus_seq_ &&
         sub_index_builder_->seperator_is_key_plus_seq_) {

@@ -180,14 +180,14 @@ class ShortenedIndexBuilder : public IndexBuilder {
     IndexValue entry(block_handle, current_block_first_internal_key_, key_num);
     std::string encoded_entry;
     std::string delta_encoded_entry;
-    entry.EncodeToWithAllIndex(&encoded_entry, include_first_key_, nullptr,
-                       key_offset, &key_buffer);
-    //entry.EncodeTo(&encoded_entry, include_first_key_, nullptr);
+    //entry.EncodeToWithAllIndex(&encoded_entry, include_first_key_, nullptr,
+    //                   key_offset, &key_buffer);
+    entry.EncodeTo(&encoded_entry, include_first_key_, nullptr);
     if (use_value_delta_encoding_ && !last_encoded_handle_.IsNull()) {
-      entry.EncodeToWithAllIndex(&delta_encoded_entry, include_first_key_, &last_encoded_handle_,
-                     key_offset, &key_buffer);
-      //entry.EncodeTo(&delta_encoded_entry, include_first_key_,
-      //               &last_encoded_handle_);
+      //entry.EncodeToWithAllIndex(&delta_encoded_entry, include_first_key_, &last_encoded_handle_,
+      //               key_offset, &key_buffer);
+      entry.EncodeTo(&delta_encoded_entry, include_first_key_,
+                     &last_encoded_handle_);
     } else {
       // If it's the first block, or delta encoding is disabled,
       // BlockBuilder::Add() below won't use delta-encoded slice.
